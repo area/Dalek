@@ -10,10 +10,8 @@ from signal import pause
 
 pins = {}
 
-for (pin) in (4,5,6,7,8):
+for (pin) in range(4,18):
     pins[pin] = gpiozero.LED(pin);
-
-for pin in pins:
     pins[pin].on();
 
 from approxeng.input.selectbinder import ControllerResource
