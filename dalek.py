@@ -5,6 +5,7 @@ import board
 import busio
 import adafruit_mcp4728
 import gpiozero
+import subprocess
 
 from signal import pause
 
@@ -30,7 +31,7 @@ buttonMappings = {
     "dright": 14,
     "dup": 15,
     "start": 16,
-    "select": 17,
+    # "select": 17,
     "home": 18
 }
 
@@ -81,7 +82,17 @@ with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
             if joystick.releases[button]:
                 print("Button released: " + button);
                 pins[buttonMappings[button]].on();
-        
+
+        if joystick.presses["select"]:
+            print("Select pushed");
+            #If joust not running, start it
+            res = subprocess.run("sudo supervisorctl status joustmania".split(" "), capture_output=True)
+            print(res.stdout);
+            if ("STOPPED" in res.stdout.decode("utf-8")):
+                subprocess.run("sudo supervisorctl start joustmania".split(" "))
+            else:
+                subprocess.run("sudo /home/davros/JoustMania/kill_processes.sh".split(" "))
+
         # Get the x, y values of the left stick
         x_axis = joystick['lx']
         y_axis = joystick['ly']
@@ -92,7 +103,7 @@ with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         # Right stick controls head left right, eye up down, but currently only in a binary sense
         x_axis = joystick['rx']
         y_axis = joystick['ry']
-        print("rx: " + str(x_axis) + " ry: " + str(y_axis))
+        # print("rx: " + str(x_axis) + " ry: " + str(y_axis))
         # This pin controls should control two relays for each axis, and will control direction
         mcp4728.channel_d.raw_value = mapStickToDacValue(x_axis)
         mcp4728.channel_c.raw_value = mapStickToDacValue(y_axis)
