@@ -10,7 +10,7 @@ from signal import pause
 
 pins = {}
 
-for (pin) in range(4,18):
+for (pin) in range(4,21):
     pins[pin] = gpiozero.LED(pin);
     pins[pin].on();
 
@@ -85,11 +85,31 @@ with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         # Get the x, y values of the left stick
         x_axis = joystick['lx']
         y_axis = joystick['ly']
-        print("x: " + str(x_axis) + " y: " + str(y_axis))
+        # print(" x: " + str(x_axis) + "  y: " + str(y_axis))
         mcp4728.channel_b.raw_value = mapStickToDacValue(x_axis)
         mcp4728.channel_a.raw_value = mapStickToDacValue(y_axis)
+
+        # Right stick controls head left right, eye up down, but currently only in a binary sense
         x_axis = joystick['rx']
         y_axis = joystick['ry']
+        print("rx: " + str(x_axis) + " ry: " + str(y_axis))
+        # This pin controls should control two relays for each axis, and will control direction
         mcp4728.channel_d.raw_value = mapStickToDacValue(x_axis)
         mcp4728.channel_c.raw_value = mapStickToDacValue(y_axis)
+
+        # These pins control power. 
+        # The limit is here such that the direction indication above is on, if it's coming on,
+        # Before power is supplied.
+        if (abs(joystick['rx']) > 0.6):
+            pins[19].off()
+        else: 
+            pins[19].on()
+
+        if (abs(joystick['ry']) > 0.6):
+            pins[20].off()
+        else:
+            pins[20].on()
+
+
+
         
