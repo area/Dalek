@@ -97,7 +97,7 @@ with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         x_axis = joystick['lx']
         y_axis = joystick['ly']
         # print(" x: " + str(x_axis) + "  y: " + str(y_axis))
-        mcp4728.channel_b.raw_value = mapStickToDacValue(x_axis)
+        mcp4728.channel_b.raw_value = mapStickToDacValue(-x_axis)
         mcp4728.channel_a.raw_value = mapStickToDacValue(y_axis)
 
         # Right stick controls head left right, eye up down, but currently only in a binary sense
