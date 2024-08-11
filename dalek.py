@@ -6,6 +6,16 @@ import busio
 import adafruit_mcp4728
 import gpiozero
 import subprocess
+import random
+
+import cv2
+
+# try:
+#     cam = cv2.VideoCapture(0)
+# except:
+#     face_classifier = cv2.CascadeClassifier(
+#         cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+#     )
 
 from signal import pause
 
@@ -13,7 +23,7 @@ pins = {}
 
 for (pin) in range(4,21):
     pins[pin] = gpiozero.LED(pin);
-    pins[pin].on();
+    #pins[pin].on(); Only if using low level relay trigger
 
 from approxeng.input.selectbinder import ControllerResource
 
@@ -67,10 +77,16 @@ def mapStickToDacValue(stickValue):
     #Multiply by 2048. range is now 0 to 4096
     stickValue *= 2048
 
-    #How mucht through the range are we?
+    #How much through the range are we?
     stickValue = stickValue / 4096
-
-    return int((1.11 + stickValue * (3.89-1.11)) * 1000)
+    if (stickValue == 0.5):
+        print('wiggle')
+        v = int((1.11 + stickValue * (3.89-1.11)) * 1000)
+        # print(v)
+        # time.sleep(5)
+        return v
+    else: 
+        return int((1.11 + stickValue * (3.89-1.11)) * 1000)
 
 with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
     while joystick.connected:
@@ -78,10 +94,10 @@ with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         for button in buttonMappings.keys():
             if joystick.presses[button]:
                 print("Button pressed: " + button);
-                pins[buttonMappings[button]].off();
+                pins[buttonMappings[button]].on(); # off(); if using low level trigger
             if joystick.releases[button]:
                 print("Button released: " + button);
-                pins[buttonMappings[button]].on();
+                pins[buttonMappings[button]].off(); # on();
 
         if joystick.presses["select"]:
             print("Select pushed");
@@ -112,15 +128,26 @@ with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         # The limit is here such that the direction indication above is on, if it's coming on,
         # Before power is supplied.
         if (abs(joystick['rx']) > 0.6):
-            pins[19].off()
+            pins[19].on() # off()  if using low level trigger
         else: 
-            pins[19].on()
+            pins[19].off() # on()
 
         if (abs(joystick['ry']) > 0.6):
-            pins[20].off()
+            pins[20].on() # off()
         else:
-            pins[20].on()
+            pins[20].off() # on()
+        # if (cam):
+        #     ret, image = cam.read()
+        #     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        #     face = face_classifier.detectMultiScale(
+        #         gray_image, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40)
+        #     )
 
+        #     for (x, y, w, h) in face:
+        #         cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 4)
 
+        #     #save image
+        #     # cv2.imwrite("face.jpg", image)
+        #     # exit()
 
         
