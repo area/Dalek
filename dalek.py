@@ -293,7 +293,7 @@ async def core():
             await asyncio.sleep(0)
 
 
-ears = Ears(pin[6])
+ears = Ears(pin[11])
 
             
 async def main():
