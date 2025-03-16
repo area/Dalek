@@ -21,25 +21,34 @@ class Webcam:
         if not self.cam.isOpened():
             print("Cannot open camera")
             return
+        print("Webcam started")
         while True:
             await asyncio.sleep(0)
             # Capture frame-by-frame
             if self.face_tracking:
                 ret, frame = self.cam.read()
+
                 if not ret:
                     print("Can't receive frame (stream end?). Exiting...")
                     break
+
+                # Rotate frame 180 degrees
+                frame = cv2.rotate(frame, cv2.ROTATE_180)
 
                 gray_image = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 face = self.face_classifier.detectMultiScale(
                     gray_image, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40)
                 )
 
-                for (x, y, w, h) in face:
-                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 4)
-
                 # Sort faces by size
                 face = sorted(face, key=lambda x: x[2] * x[3], reverse=True)
+                i = 0;
+                for (x, y, w, h) in face:
+                    
+                    color = (0, 255, 0) if i==0 else (0, 0, 255)
+                    cv2.rectangle(frame, (x, y), (x + w, y + h), color, 4)
+                    i += 1
+
                 if len(face) > 0:
                     # Get the largest face
                     (x, y, w, h) = face[0]
@@ -50,7 +59,7 @@ class Webcam:
                     self.y_direction = 0
 
                 # Save image
-                # cv2.imwrite("face.jpg", frame)
+                cv2.imwrite("face.jpg", frame)
 
         # # Release the webcam
         self.cam.release()

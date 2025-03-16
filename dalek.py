@@ -179,8 +179,11 @@ async def core():
                 x, y = webcam.get_direction()
                 print("face tracking, setting eye position")
                 print("x: " + str(x) + " y: " + str(y))
-                ry_axis = y
-                rx_axis = 0
+                ry_axis = -y * 1.5
+                rx_axis = x * 1.7
+
+            ry_axis /= 2.5
+            rx_axis /= 2.5
             
         # Check button states before setting motor speed on head LR axis
         # switches are normally open so circuit is closed when pressed. Not ideal 
@@ -271,7 +274,7 @@ async def core():
             # else:
             #     pins[20].off() # on()
 
-            time.sleep(0.3) # slow loop for debugging
+            # time.sleep(0.3) # slow loop for debugging
             await asyncio.sleep(0)
 
 
