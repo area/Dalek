@@ -15,6 +15,9 @@ from signal import pause
 from webcam import Webcam
 import asyncio
 
+from audio import monitor_audio_output
+from ears import Ears
+
 webcam = Webcam()
 
 
@@ -290,10 +293,12 @@ async def core():
             await asyncio.sleep(0)
 
 
+ears = Ears(pin[6])
 
             
 async def main():
-    await asyncio.gather(core(), webcam.start())
+    await asyncio.gather(core(), webcam.start(), monitor_audio_output(ears))
+
 
 asyncio.run(main())
 
