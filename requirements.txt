@@ -10,6 +10,7 @@ approxeng.input==2.6.4
 binho-host-adapter==0.1.6
 board==1.0
 colorzero==2.0
+dlib==19.24.6
 evdev==1.6.1
 gpiozero==2.0.1
 lgpio==0.2.2.0
@@ -18,9 +19,12 @@ opencv-python==4.11.0.86
 PyAudio==0.2.14
 pyftdi==0.55.4
 pyserial==3.5
+pyttsx4==3.0.15
 pyusb==1.2.1
 PyYAML==6.0.1
 rpi-ws281x==5.0.0
 RPi.GPIO==0.7.1
+scipy==1.15.2
+six==1.17.0
 sysv-ipc==1.1.0
 typing_extensions==4.12.2

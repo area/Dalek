@@ -67,12 +67,6 @@ button18 = Button(18, pull_up=False)
 button22 = Button(22, pull_up=False)
 button23 = Button(23, pull_up=False)
 
-# Flags to track previous button states so that only rumble once per time limit switch reached
-prev_button17_state = False
-prev_button18_state = False
-prev_button22_state = True
-prev_button23_state = True
-
 
 buttonMappings = {
     "square": 4,
@@ -121,6 +115,12 @@ motor2_dir = gpiozero.OutputDevice(26)     # GPIO pin for motor 2 direction
 
 
 async def core():
+
+    # Flags to track previous button states so that only rumble once per time limit switch reached
+    prev_button17_state = False
+    prev_button18_state = False
+    prev_button22_state = True
+    prev_button23_state = True
 
     with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         while joystick.connected:
@@ -182,8 +182,20 @@ async def core():
                 ry_axis = -y * 1.5
                 rx_axis = x * 1.7
 
-            ry_axis /= 2.5
-            rx_axis /= 2.5
+                MIN_TRACKING_DRIVE = 0.5
+
+                if (abs(ry_axis) < 0.1):
+                    ry_axis = 0
+                elif (abs(ry_axis) < MIN_TRACKING_DRIVE):
+                    ry_axis = MIN_TRACKING_DRIVE * ry_axis / abs(ry_axis)
+
+                if (abs(rx_axis) < 0.1):
+                    rx_axis = 0
+                elif (abs(rx_axis) < MIN_TRACKING_DRIVE):
+                    rx_axis = MIN_TRACKING_DRIVE * rx_axis / abs(rx_axis)
+
+            ry_axis /= 2
+            rx_axis /= 2
             
         # Check button states before setting motor speed on head LR axis
         # switches are normally open so circuit is closed when pressed. Not ideal 
@@ -196,7 +208,7 @@ async def core():
             elif not button17.is_pressed:
                 print('CCW head limit reached')
                 # Prevent motor rotation anticlockwise when button 17 is pressed
-                if rx_axis > 0:
+                if rx_axis < 0:
                     setMotorSpeed(motor1_pwm, motor1_dir, 0) # don't allow ccw
                     if not prev_button17_state:
                         joystick.rumble(500)  # Rumble for 0.5 seconds
@@ -207,7 +219,7 @@ async def core():
             elif not button18.is_pressed:
                 # Prevent motor rotation clockwise when button 18 is pressed
                 print('CW head limit reached')
-                if rx_axis < 0:
+                if rx_axis > 0:
                     setMotorSpeed(motor1_pwm, motor1_dir, 0)
                     if not prev_button18_state:
                         joystick.rumble(500)  # Rumble for 0.5 seconds

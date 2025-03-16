@@ -21,6 +21,7 @@ class Webcam:
         #The variable we use to keep track of the fact whether we are
         #currently tracking a face we saw previously
         self.currentlyTrackingFace = 0
+        self.count = 0;
 
     def get_direction(self):
         return self.x_direction, self.y_direction
@@ -35,15 +36,15 @@ class Webcam:
             await asyncio.sleep(0)
             # Capture frame-by-frame
             # print(self.face_tracking)
+            ret, frame = self.cam.read()
+            # Rotate frame 180 degrees
+            frame = cv2.rotate(frame, cv2.ROTATE_180)
             if self.face_tracking:
-                ret, frame = self.cam.read()
 
                 if not ret:
                     print("Can't receive frame (stream end?). Exiting...")
                     break
 
-                # Rotate frame 180 degrees
-                # frame = cv2.rotate(frame, cv2.ROTATE_180)
 
                 # If we are not tracking a face, try to find one
                 # print("Currently tracking face:" + str(self.currentlyTrackingFace))
@@ -96,6 +97,9 @@ class Webcam:
                                     (t_x + t_w , t_y + t_h),
                                     (0, 255, 0) ,2)
                         
+                        self.x_direction = ((t_x + t_w / 2) - (frame.shape[1] / 2)) / (frame.shape[1] / 2)
+                        self.y_direction = ((t_y + t_h / 2) - (frame.shape[0] / 2)) / (frame.shape[0] / 2)
+                        
 
                     else:
                         #If the quality of the tracking update is not
@@ -105,8 +109,13 @@ class Webcam:
                         #again
                         self.currentlyTrackingFace = 0
 
-                # Save image
-                cv2.imwrite("face.jpg", frame)
+            # Save image
+            # self.count = (self.count + 1) % 25
+            # print(self.count)
+            # if (self.count == 0):
+            #     print("writing image")
+            #     cv2.imwrite("face.jpg", frame)
+            # cv2.imwrite("face.jpg", frame)
 
         # # Release the webcam
         self.cam.release()
