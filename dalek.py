@@ -182,7 +182,7 @@ async def core():
                 ry_axis = -y * 1.5
                 rx_axis = x * 1.7
 
-                MIN_TRACKING_DRIVE = 0.5
+                MIN_TRACKING_DRIVE = 0.6
 
                 if (abs(ry_axis) < 0.1):
                     ry_axis = 0
