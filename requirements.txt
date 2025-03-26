@@ -16,7 +16,7 @@ gpiozero==2.0.1
 lgpio==0.2.2.0
 numpy==2.2.3
 opencv-python==4.11.0.86
-PyAudio==0.2.14
+pulsectl-asyncio==1.2.2
 pyftdi==0.55.4
 pyserial==3.5
 pyttsx4==3.0.15
