@@ -16,9 +16,9 @@ from approxeng.input.selectbinder import ControllerResource
 from signal import pause
 from webcam import Webcam
 import asyncio
-import pygame
+
 #import logging
-from audio import monitor_audio_output
+from audio import init_pygame, monitor_audio_output
 from ears import Ears
 
 #time.sleep(5)
@@ -29,8 +29,6 @@ try:
 except Exception as e:
     print(f"Webcam initialization failed: {e}")
     webcam_available = False
-
-pygame.mixer.init()
 
 # Set the default pin factory to native (BCM numbering, not physical pin number)
 #Device.pin_factory = NativeFactory() # seems not to work
@@ -159,6 +157,7 @@ motor2_dir = gpiozero.OutputDevice(26)     # GPIO pin for motor 2 direction
 
 
 async def core():
+    pygame = await init_pygame()
 
     # Flags to track previous button states so that only rumble once per time limit switch reached
     prev_button17_state = False
