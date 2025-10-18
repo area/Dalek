@@ -2,6 +2,7 @@ import cv2
 from signal import pause
 import asyncio
 import dlib
+#import logging
 
 #Create the tracker we will use
 tracker = dlib.correlation_tracker()
@@ -11,7 +12,14 @@ tracker = dlib.correlation_tracker()
 
 class Webcam:
     def __init__(self):
-        self.cam = cv2.VideoCapture(0)
+        try:
+            self.camera = cv2.VideoCapture(0)
+            if not self.camera.isOpened():
+                raise Exception("Cannot open camera")
+        except Exception as e:
+            #logging.error(f"Webcam initialization failed: {e}")
+            self.camera = None
+        #self.cam = cv2.VideoCapture(0)
         self.face_classifier = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
@@ -27,16 +35,20 @@ class Webcam:
         return self.x_direction, self.y_direction
 
     async def start(self):
-        if not self.cam.isOpened():
-            print("Cannot open camera")
+        if self.camera is None:
+            #logging.error("Webcam is not available. Skipping webcam functionality.")
             return
+        #if not self.cam.isOpened():
+        #    print("Cannot open camera")
+        #    exit(1)
+        #    return
         print("Webcam started")
         await asyncio.sleep(0)
         while True:
             await asyncio.sleep(0)
             # Capture frame-by-frame
             # print(self.face_tracking)
-            ret, frame = self.cam.read()
+            ret, frame = self.camera.read()
             # Rotate frame 180 degrees
             frame = cv2.rotate(frame, cv2.ROTATE_180)
             if self.face_tracking:
@@ -110,12 +122,12 @@ class Webcam:
                         self.currentlyTrackingFace = 0
 
             # Save image
-            # self.count = (self.count + 1) % 25
-            # print(self.count)
-            # if (self.count == 0):
-            #     print("writing image")
-            #     cv2.imwrite("face.jpg", frame)
-            # cv2.imwrite("face.jpg", frame)
+            self.count = (self.count + 1) % 100
+            print(self.count)
+            if (self.count == 0):
+                print("writing image")
+                cv2.imwrite("face.jpg", frame)
+            cv2.imwrite("face.jpg", frame)
 
         # # Release the webcam
-        self.cam.release()
+        self.camera.release()

@@ -13,5 +13,5 @@ class Ears:
         self._flash_task = asyncio.create_task(self._off())
 
     async def _off(self):
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.05)
         self._pin.off()
