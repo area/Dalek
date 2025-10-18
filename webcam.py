@@ -25,11 +25,11 @@ class Webcam:
         )
         self.x_direction = 0
         self.y_direction = 0
-        self.face_tracking = False;
+        self.face_tracking = False
         #The variable we use to keep track of the fact whether we are
         #currently tracking a face we saw previously
         self.currentlyTrackingFace = 0
-        self.count = 0;
+        self.count = 0
 
     def get_direction(self):
         return self.x_direction, self.y_direction
@@ -43,9 +43,8 @@ class Webcam:
         #    exit(1)
         #    return
         print("Webcam started")
-        await asyncio.sleep(0)
         while True:
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.1)
             # Capture frame-by-frame
             # print(self.face_tracking)
             ret, frame = self.camera.read()
@@ -68,9 +67,8 @@ class Webcam:
 
                     # Sort faces by size
                     face = sorted(face, key=lambda x: x[2] * x[3], reverse=True)
-                    i = 0;
+                    i = 0
                     for (x, y, w, h) in face:
-                        
                         color = (0, 255, 0) if i==0 else (0, 0, 255)
                         cv2.rectangle(frame, (x, y), (x + w, y + h), color, 4)
                         i += 1
@@ -78,6 +76,7 @@ class Webcam:
                     if len(face) > 0:
                         # Get the largest face
                         (x, y, w, h) = face[0]
+                        print(f"Found face at {x} {y} {w} {h}")
                         self.x_direction = ((x + w / 2) - (frame.shape[1] / 2)) / (frame.shape[1] / 2)
                         self.y_direction = ((y + h / 2) - (frame.shape[0] / 2)) / (frame.shape[0] / 2)
                         self.currentlyTrackingFace = 1
@@ -108,10 +107,10 @@ class Webcam:
                         cv2.rectangle(frame, (t_x, t_y),
                                     (t_x + t_w , t_y + t_h),
                                     (0, 255, 0) ,2)
-                        
+
                         self.x_direction = ((t_x + t_w / 2) - (frame.shape[1] / 2)) / (frame.shape[1] / 2)
                         self.y_direction = ((t_y + t_h / 2) - (frame.shape[0] / 2)) / (frame.shape[0] / 2)
-                        
+
 
                     else:
                         #If the quality of the tracking update is not
@@ -123,7 +122,6 @@ class Webcam:
 
             # Save image
             self.count = (self.count + 1) % 100
-            print(self.count)
             if (self.count == 0):
                 print("writing image")
                 cv2.imwrite("face.jpg", frame)
