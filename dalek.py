@@ -377,9 +377,11 @@ ears = Ears(pins[11])
 
 
 async def main():
-    tasks = [core(), monitor_audio_output(ears)]
-    # if webcam_available:
-    #     tasks.append(webcam.start())
+    # Currently the audio monitor is not playing nice with the webcam.
+    # tasks = [core(), monitor_audio_output(ears)]
+    tasks = [core()]
+    if webcam_available:
+        tasks.append(webcam.start())
     await asyncio.gather(*tasks)
 
 
