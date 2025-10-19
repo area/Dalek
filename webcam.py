@@ -125,7 +125,6 @@ class Webcam:
             if (self.count == 0):
                 print("writing image")
                 cv2.imwrite("face.jpg", frame)
-            cv2.imwrite("face.jpg", frame)
 
         # # Release the webcam
         self.camera.release()
