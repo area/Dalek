@@ -73,14 +73,17 @@ def mapStickToGP8413Value(stickValue):
 
 
 def setMotorSpeed(motor_pwm, motor_dir, speed):
+    if speed == 0:
+        motor_pwm.value = 0
+        return
     if speed >= 0:
         motor_dir.on()
         motor_pwm.value = speed
-        #print("forwards: " + str(speed))
+        # print("forwards: " + str(speed))
     else:
         motor_dir.off()
         motor_pwm.value = -speed
-        #print("backwards: " + str(speed))
+        # print("backwards: " + str(speed))
 
 
 # Set pins for controller pad
@@ -221,6 +224,7 @@ async def core():
             # Right stick controls head left right, eye up down, but currently only in a binary sense
             rx_axis = joystick['rx']
             ry_axis = joystick['ry']
+
             #print("rx: " + str(rx_axis) + " ry: " + str(ry_axis))
             # If right stick being used, set face tracking to false
             if rx_axis != 0 or ry_axis != 0:
@@ -253,6 +257,15 @@ async def core():
 
             ry_axis /= 2
             rx_axis /= 1.5
+
+            # Scale one direction to counteract preference of moter
+            if (rx_axis < 0):
+                rx_axis *= 1.25
+
+            if rx_axis > 1:
+                rx_axis = 1
+            if rx_axis < -1:    
+                rx_axis = -1
 
         # Check button states before setting motor speed on head LR axis
         # switches are normally open so circuit is closed when pressed. Not ideal
