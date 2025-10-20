@@ -20,6 +20,7 @@ import asyncio
 #import logging
 from audio import init_pygame, monitor_audio_output
 from ears import Ears
+from motor import Motor
 
 #time.sleep(5)
 #webcam = Webcam()
@@ -69,21 +70,6 @@ def mapStickToGP8413Value(stickValue):
 
     #print("stickValue: " + str(stickValue) + " GP8413_value: " + str(GP8413_value))
     return GP8413_value
-
-
-
-def setMotorSpeed(motor_pwm, motor_dir, speed):
-    if speed == 0:
-        motor_pwm.value = 0
-        return
-    if speed >= 0:
-        motor_dir.on()
-        motor_pwm.value = speed
-        # print("forwards: " + str(speed))
-    else:
-        motor_dir.off()
-        motor_pwm.value = -speed
-        # print("backwards: " + str(speed))
 
 
 # Set pins for controller pad
@@ -153,10 +139,14 @@ while GP8413.begin():
 # mcp4728.save_settings()
 
 # Set PWM and Dir pins for head and eye via Cytron MOD10A Rev2
-motor1_pwm = gpiozero.PWMOutputDevice(12)  # GPIO pin for motor 1 PWM0
-motor1_dir = gpiozero.OutputDevice(25)     # GPIO pin for motor 1 direction
-motor2_pwm = gpiozero.PWMOutputDevice(13)  # GPIO pin for motor 2 PWM1
-motor2_dir = gpiozero.OutputDevice(26)     # GPIO pin for motor 2 direction
+head_motor = Motor(
+    gpiozero.PWMOutputDevice(12),  # GPIO pin for motor 1 PWM0
+    gpiozero.OutputDevice(25),  # GPIO pin for motor 1 direction
+)
+eye_stalk_motor = Motor(
+    gpiozero.PWMOutputDevice(13),  # GPIO pin for motor 2 PWM1
+    gpiozero.OutputDevice(26),  # GPIO pin for motor 2 direction
+)
 
 
 async def core():
@@ -264,7 +254,7 @@ async def core():
 
             if rx_axis > 1:
                 rx_axis = 1
-            if rx_axis < -1:    
+            if rx_axis < -1:
                 rx_axis = -1
 
         # Check button states before setting motor speed on head LR axis
@@ -273,29 +263,29 @@ async def core():
         # for toggle switches
             if button17.is_pressed and button18.is_pressed:
                 # Control motor speed and direction based on joystick input
-                setMotorSpeed(motor1_pwm, motor1_dir, rx_axis)
+                head_motor.set_velocity(-rx_axis)
                 #print('head limit not reached')
             elif not button17.is_pressed:
                 #print('CCW head limit reached')
                 # Prevent motor rotation anticlockwise when button 17 is pressed
                 if rx_axis < 0:
-                    setMotorSpeed(motor1_pwm, motor1_dir, 0) # don't allow ccw
+                    head_motor.set_velocity(0)  # don't allow ccw
                     if not prev_button17_state:
                         joystick.rumble(500)  # Rumble for 0.5 seconds
                         prev_button17_state = True
                 else:
-                    setMotorSpeed(motor1_pwm, motor1_dir, rx_axis) # allow cw
+                    head_motor.set_velocity(-rx_axis)  # allow cw
 
             elif not button18.is_pressed:
                 # Prevent motor rotation clockwise when button 18 is pressed
                 #print('CW head limit reached')
                 if rx_axis > 0:
-                    setMotorSpeed(motor1_pwm, motor1_dir, 0)
+                    head_motor.set_velocity(0)
                     if not prev_button18_state:
                         joystick.rumble(500)  # Rumble for 0.5 seconds
                         prev_button18_state = True
                 else:
-                    setMotorSpeed(motor1_pwm, motor1_dir, rx_axis)
+                    head_motor.set_velocity(-rx_axis)
 
             # Reset flags if buttons are not pressed
             if  button17.is_pressed:
@@ -308,27 +298,27 @@ async def core():
         # as failsafe in case of circuit failure
             if not button22.is_pressed and not button23.is_pressed:
                 # Control motor speed and direction based on joystick input
-                setMotorSpeed(motor2_pwm, motor2_dir, ry_axis)
+                eye_stalk_motor.set_velocity(-ry_axis)
 
             elif button22.is_pressed:
                 # Prevent eye lifting when 22 is (not) pressed and circuit is open
                 if ry_axis > 0:
-                    setMotorSpeed(motor2_pwm, motor2_dir, 0) # Don't allow lift
+                    eye_stalk_motor.set_velocity(0)  # Don't allow lift
                     if prev_button22_state:
                         joystick.rumble(500)  # Rumble for 0.5 seconds
                         prev_button22_state = False
                 else:
-                    setMotorSpeed(motor2_pwm, motor2_dir, ry_axis) # allow cw
+                    eye_stalk_motor.set_velocity(-ry_axis)  # allow cw
 
             elif button23.is_pressed:
                 # Prevent lowering when button 23 is (not) pressed and circuit is open
                 if ry_axis < 0:
-                    setMotorSpeed(motor2_pwm, motor2_dir, 0)
+                    eye_stalk_motor.set_velocity(0)
                     if prev_button23_state:
                         joystick.rumble(500)  # Rumble for 0.5 seconds
                         prev_button23_state = False
                 else:
-                    setMotorSpeed(motor2_pwm, motor2_dir, ry_axis)
+                    eye_stalk_motor.set_velocity(-ry_axis)
 
             # Reset flags if buttons are pressed
             if not button22.is_pressed:
