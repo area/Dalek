@@ -107,7 +107,18 @@ buttonMappings = {
 i2c = busio.I2C(board.SCL, board.SDA)
 
 # Set up the GP8413 DAC
-GP8413 = GP8413(i2c_addr=0x59)
+
+try:
+    GP8413 = GP8413(i2c_addr=0x59)
+except:
+    print("GP8413 not found at address 0x59")
+    print("Will mock joystick outputs - no movement possible")
+    class MockGP8413:
+        def begin(self):
+            return False
+        def set_dac_out_voltage(self, voltage, channel):
+            pass
+    GP8413 = MockGP8413()
 
 while GP8413.begin():
     print("init error")
