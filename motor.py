@@ -7,9 +7,17 @@ class Motor:
         *,
         pwm_pin: PWMOutputDevice,
         direction_pin: OutputDevice,
+        velocity_scaling: tuple[float, float] = (1.0, 1.0)
     ):
         self._pwm_pin = pwm_pin
         self._direction_pin = direction_pin
+        assert (
+            velocity_scaling[0] > 0 and
+            velocity_scaling[0] <= 1 and
+            velocity_scaling[1] > 0 and
+            velocity_scaling[1] <= 1
+        ), "Velocity scaling must be in range (0, 1]."
+        self._velocity_scaling = velocity_scaling
         self._velocity = 0
 
     @property
@@ -18,6 +26,7 @@ class Motor:
 
     def set_velocity(self, velocity: float) -> None:
         assert velocity >= -1 and velocity <= 1, "Velocity must be in range [-1, 1]."
+        velocity *= self._velocity_scaling[int(velocity < 0)]
         self._velocity = velocity
         if velocity >= 0:
             self._pwm_pin.value = velocity

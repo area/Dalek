@@ -154,10 +154,12 @@ while GP8413.begin():
 head_motor = TravelLimitedMotor(
     pwm_pin=gpiozero.PWMOutputDevice(12),  # GPIO pin for motor 1 PWM0
     direction_pin=gpiozero.OutputDevice(25),  # GPIO pin for motor 1 direction
+    velocity_scaling=(5 / 6, 2 / 3),
 )
 eye_stalk_motor = TravelLimitedMotor(
     pwn_pin=gpiozero.PWMOutputDevice(13),  # GPIO pin for motor 2 PWM1
-    direction_pin=gpiozero.OutputDevice(26),  # GPIO pin for motor 2 direction
+    direction_pin=gpiozero.OutputDevice(26),  # GPIO pin for motor 2 direction,
+    velocity_scaling=(0.5, 0.5),
 )
 
 
@@ -219,9 +221,6 @@ async def core():
             #mcp4728.channel_b.raw_value = mapStickToDacValue(-lx_axis) # -ve because chair reversed
             #mcp4728.channel_a.raw_value = mapStickToDacValue(ly_axis)
 
-
-            # TODO - implement feedback from limit switches to stop motors
-
             # Right stick controls head left right, eye up down, but currently only in a binary sense
             rx_axis = joystick['rx']
             ry_axis = joystick['ry']
@@ -254,19 +253,6 @@ async def core():
 
                 except Exception as e:
                         print(f"Error during face tracking: {e}")
-
-
-            ry_axis /= 2
-            rx_axis /= 1.5
-
-            # Scale one direction to counteract preference of moter
-            if (rx_axis < 0):
-                rx_axis *= 1.25
-
-            if rx_axis > 1:
-                rx_axis = 1
-            if rx_axis < -1:
-                rx_axis = -1
 
             # Check button states before setting motor speed on head LR axis
             # switches are normally open so circuit is closed when pressed. Not ideal
