@@ -85,7 +85,7 @@ button17 = Button(17, pull_up=False)
 button18 = Button(18, pull_up=False)
 button22 = Button(22, pull_up=False)
 button23 = Button(23, pull_up=False)
-button24 = Button(24, pull_up=False) # Gin dispense button on gun
+gin_button = Button(24, pull_up=False) # Gin dispense button on gun
 
 buttonMappings = {
     "square": 4,
@@ -170,11 +170,11 @@ def rumble(duration_s: float, joystick):
 
 async def core():
     pygame = await init_pygame()
+    pygame.mixer.music.load('./media/inebriate.mp3')
 
     # Initialize variables for the time-delay gin dispensary
     button24_not_pressed_start = None  # Tracks when button24 was first not pressed
     gpio_pin_on = False  # Tracks the state of the GPIO pin dispensing gin
-    inebriated = False  # Tracks whether the inebriated sound clip has been played
 
     with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         while joystick.connected:
@@ -294,18 +294,13 @@ async def core():
             # else:
             #     pins[20].off() # on()
 
-            # time.sleep(0.3) # slow loop for debugging
-
-            # Check if button24 is not pressed
-            if not button24.is_pressed: # or (joystick.presses["cross"] and joystick.presses["triangle"]):
-                if not inebriated:
-                    print("INEBRIATE")
-                    pygame.mixer.music.load('./media/inebriate.mp3')
+            # Check if gin_button is not pressed
+            if not gin_button.is_pressed: # or (joystick.presses["cross"] and joystick.presses["triangle"]):
+                if not pygame.mixer.music.get_busy():
                     pygame.mixer.music.play()
-                    inebriated = True  # Set the flag to prevent replaying
 
                 if button24_not_pressed_start is None:
-                    # Start the timer when button24 is first detected as not pressed
+                    # Start the timer when gin_button is first detected as not pressed
                     button24_not_pressed_start = time.time()
                 elif time.time() - button24_not_pressed_start >= 3 and not gpio_pin_on:
                     # If button24 has been not pressed for 3 seconds, turn the GPIO pin on
@@ -319,7 +314,6 @@ async def core():
                     pins[7].off()  # Turn the GPIO pin off
                     gpio_pin_on = False  # Update the state of the GPIO pin
                 button24_not_pressed_start = None  # Reset the timer
-                inebriated = False  # Reset the inebriated flag to allow replay on the next unpress
 
             await asyncio.sleep(0)
 
