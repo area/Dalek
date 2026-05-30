@@ -9,7 +9,6 @@ import busio
 from GP8XXX_IIC import GP8413
 import gpiozero
 import subprocess
-import random
 
 from gpiozero import Device, PWMOutputDevice, OutputDevice, Button
 from gpiozero.pins.native import NativeFactory
@@ -91,7 +90,6 @@ gin_button = Button(24, pull_up=False) # Gin dispense button on gun
 buttonMappings = {
     "square": 4,
     "triangle": 10,
-    #"circle": 7, # used to pump gin
     "cross": 6,
     "l1": 8,
     "l2": 9,  # inebriate
@@ -169,6 +167,12 @@ def rumble(duration_s: float, joystick):
     joystick.rumble(duration_s / 1000)
 
 
+async def pump_gin():
+    # Make sure they really want it.
+    await asyncio.sleep(2)
+    pins[7].on()
+
+
 async def core():
     pygame = await init_pygame()
     pygame.mixer.music.load('./media/inebriate.mp3')
@@ -176,6 +180,8 @@ async def core():
     # Initialize variables for the time-delay gin dispensary
     button24_not_pressed_start = None  # Tracks when button24 was first not pressed
     gpio_pin_on = False  # Tracks the state of the GPIO pin dispensing gin
+
+    gin_task: asyncio.Task | None = None
 
     with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         while joystick.connected:
@@ -301,21 +307,11 @@ async def core():
                 if not pygame.mixer.music.get_busy():
                     pygame.mixer.music.play()
 
-                if button24_not_pressed_start is None:
-                    # Start the timer when gin_button is first detected as not pressed
-                    button24_not_pressed_start = time.time()
-                elif time.time() - button24_not_pressed_start >= 3 and not gpio_pin_on:
-                    # If button24 has been not pressed for 3 seconds, turn the GPIO pin on
-                    print("Gin button pressed for 3 seconds, turning pump on")
-                    pins[7].on()
-                    gpio_pin_on = True  # Update the state of the GPIO pin
-            else:
-                # Reset the timer and turn the GPIO pin off when button24 is pressed
-                if gpio_pin_on:
-                    print("Gin button released, turning pump off")
-                    pins[7].off()  # Turn the GPIO pin off
-                    gpio_pin_on = False  # Update the state of the GPIO pin
-                button24_not_pressed_start = None  # Reset the timer
+                if not gin_task or gin_task.done():
+                    gin_task = asyncio.create_task(pump_gin())
+            elif gin_task:
+                pins[7].off()
+                gin_task.cancel()
 
             await asyncio.sleep(0)
 
