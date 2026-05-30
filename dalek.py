@@ -20,6 +20,8 @@ import asyncio
 #import logging
 from audio import init_pygame, monitor_audio_output
 from ears import Ears
+from motor import TravelLimitedMotor
+from utils import throttle
 
 #time.sleep(5)
 #webcam = Webcam()
@@ -71,21 +73,6 @@ def mapStickToGP8413Value(stickValue):
     return GP8413_value
 
 
-
-def setMotorSpeed(motor_pwm, motor_dir, speed):
-    if speed == 0:
-        motor_pwm.value = 0
-        return
-    if speed >= 0:
-        motor_dir.on()
-        motor_pwm.value = speed
-        # print("forwards: " + str(speed))
-    else:
-        motor_dir.off()
-        motor_pwm.value = -speed
-        # print("backwards: " + str(speed))
-
-
 # Set pins for controller pad
 pins = {}
 
@@ -121,7 +108,18 @@ buttonMappings = {
 i2c = busio.I2C(board.SCL, board.SDA)
 
 # Set up the GP8413 DAC
-GP8413 = GP8413(i2c_addr=0x59)
+
+try:
+    GP8413 = GP8413(i2c_addr=0x59)
+except:
+    print("GP8413 not found at address 0x59")
+    print("Will mock joystick outputs - no movement possible")
+    class MockGP8413:
+        def begin(self):
+            return False
+        def set_dac_out_voltage(self, voltage, channel):
+            pass
+    GP8413 = MockGP8413()
 
 while GP8413.begin():
     print("init error")
@@ -153,20 +151,25 @@ while GP8413.begin():
 # mcp4728.save_settings()
 
 # Set PWM and Dir pins for head and eye via Cytron MOD10A Rev2
-motor1_pwm = gpiozero.PWMOutputDevice(12)  # GPIO pin for motor 1 PWM0
-motor1_dir = gpiozero.OutputDevice(25)     # GPIO pin for motor 1 direction
-motor2_pwm = gpiozero.PWMOutputDevice(13)  # GPIO pin for motor 2 PWM1
-motor2_dir = gpiozero.OutputDevice(26)     # GPIO pin for motor 2 direction
+head_motor = TravelLimitedMotor(
+    pwm_pin=gpiozero.PWMOutputDevice(12),  # GPIO pin for motor 1 PWM0
+    direction_pin=gpiozero.OutputDevice(25),  # GPIO pin for motor 1 direction
+    velocity_scaling=(5 / 6, 2 / 3),
+)
+eye_stalk_motor = TravelLimitedMotor(
+    pwn_pin=gpiozero.PWMOutputDevice(13),  # GPIO pin for motor 2 PWM1
+    direction_pin=gpiozero.OutputDevice(26),  # GPIO pin for motor 2 direction,
+    velocity_scaling=(0.5, 0.5),
+)
+
+
+@throttle
+def rumble(duration_s: float, joystick):
+    joystick.rumble(duration_s / 1000)
 
 
 async def core():
     pygame = await init_pygame()
-
-    # Flags to track previous button states so that only rumble once per time limit switch reached
-    prev_button17_state = False
-    prev_button18_state = False
-    prev_button22_state = True
-    prev_button23_state = True
 
     # Initialize variables for the time-delay gin dispensary
     button24_not_pressed_start = None  # Tracks when button24 was first not pressed
@@ -178,19 +181,19 @@ async def core():
             presses = joystick.check_presses()
             for button in buttonMappings.keys():
                 if joystick.presses[button]:
-                    print("Button pressed: " + button);
+                    print("Button pressed: " + button)
                     if buttonMappings[button] is not None:
                         pins[buttonMappings[button]].on(); # off(); if using low level trigger
                 if joystick.releases[button]:
-                    print("Button released: " + button);
+                    print("Button released: " + button)
                     if buttonMappings[button] is not None:
                         pins[buttonMappings[button]].off(); # on();
 
             if joystick.presses["select"]:
-                print("Select pushed");
+                print("Select pushed")
                 #If joust not running, start it
                 res = subprocess.run("sudo supervisorctl status joustmania".split(" "), capture_output=True)
-                print(res.stdout);
+                print(res.stdout)
 
                 if ("STOPPED" in res.stdout.decode("utf-8")):
                     subprocess.run("sudo supervisorctl start joustmania".split(" "))
@@ -217,9 +220,6 @@ async def core():
             # Original DAC for original joystick emulation
             #mcp4728.channel_b.raw_value = mapStickToDacValue(-lx_axis) # -ve because chair reversed
             #mcp4728.channel_a.raw_value = mapStickToDacValue(ly_axis)
-
-
-            # TODO - implement feedback from limit switches to stop motors
 
             # Right stick controls head left right, eye up down, but currently only in a binary sense
             rx_axis = joystick['rx']
@@ -254,88 +254,26 @@ async def core():
                 except Exception as e:
                         print(f"Error during face tracking: {e}")
 
+            # Check button states before setting motor speed on head LR axis
+            # switches are normally open so circuit is closed when pressed. Not ideal
+            # as no failsafe in case of circuit failure, but limited by hardware options
+            # for toggle switches
+            head_motor.set_travel_limit(not button17.is_pressed, not button18.is_pressed)
+            # Control motor speed and direction based on joystick input
+            head_motor.set_velocity(-rx_axis)
+            if rx_axis and not head_motor.velocity:
+                # Velocity not set due to travel limit reached.
+                rumble(0.5, joystick)
 
-            ry_axis /= 2
-            rx_axis /= 1.5
-
-            # Scale one direction to counteract preference of moter
-            if (rx_axis < 0):
-                rx_axis *= 1.25
-
-            if rx_axis > 1:
-                rx_axis = 1
-            if rx_axis < -1:    
-                rx_axis = -1
-
-        # Check button states before setting motor speed on head LR axis
-        # switches are normally open so circuit is closed when pressed. Not ideal
-        # as no failsafe in case of circuit failure, but limited by hardware options
-        # for toggle switches
-            if button17.is_pressed and button18.is_pressed:
-                # Control motor speed and direction based on joystick input
-                setMotorSpeed(motor1_pwm, motor1_dir, rx_axis)
-                #print('head limit not reached')
-            elif not button17.is_pressed:
-                #print('CCW head limit reached')
-                # Prevent motor rotation anticlockwise when button 17 is pressed
-                if rx_axis < 0:
-                    setMotorSpeed(motor1_pwm, motor1_dir, 0) # don't allow ccw
-                    if not prev_button17_state:
-                        joystick.rumble(500)  # Rumble for 0.5 seconds
-                        prev_button17_state = True
-                else:
-                    setMotorSpeed(motor1_pwm, motor1_dir, rx_axis) # allow cw
-
-            elif not button18.is_pressed:
-                # Prevent motor rotation clockwise when button 18 is pressed
-                #print('CW head limit reached')
-                if rx_axis > 0:
-                    setMotorSpeed(motor1_pwm, motor1_dir, 0)
-                    if not prev_button18_state:
-                        joystick.rumble(500)  # Rumble for 0.5 seconds
-                        prev_button18_state = True
-                else:
-                    setMotorSpeed(motor1_pwm, motor1_dir, rx_axis)
-
-            # Reset flags if buttons are not pressed
-            if  button17.is_pressed:
-                prev_button17_state = False
-            if  button18.is_pressed:
-                prev_button18_state = False
-
-        # Check button states before setting motor speed on eye up/down axis
-        # These are the opposite of the head rotation as switches wired normally closed
-        # as failsafe in case of circuit failure
-            if not button22.is_pressed and not button23.is_pressed:
-                # Control motor speed and direction based on joystick input
-                setMotorSpeed(motor2_pwm, motor2_dir, ry_axis)
-
-            elif button22.is_pressed:
-                # Prevent eye lifting when 22 is (not) pressed and circuit is open
-                if ry_axis > 0:
-                    setMotorSpeed(motor2_pwm, motor2_dir, 0) # Don't allow lift
-                    if prev_button22_state:
-                        joystick.rumble(500)  # Rumble for 0.5 seconds
-                        prev_button22_state = False
-                else:
-                    setMotorSpeed(motor2_pwm, motor2_dir, ry_axis) # allow cw
-
-            elif button23.is_pressed:
-                # Prevent lowering when button 23 is (not) pressed and circuit is open
-                if ry_axis < 0:
-                    setMotorSpeed(motor2_pwm, motor2_dir, 0)
-                    if prev_button23_state:
-                        joystick.rumble(500)  # Rumble for 0.5 seconds
-                        prev_button23_state = False
-                else:
-                    setMotorSpeed(motor2_pwm, motor2_dir, ry_axis)
-
-            # Reset flags if buttons are pressed
-            if not button22.is_pressed:
-                prev_button22_state = True
-            if not button23.is_pressed:
-                prev_button23_state = True
-
+            # Check button states before setting motor speed on eye up/down axis
+            # These are the opposite of the head rotation as switches wired normally closed
+            # as failsafe in case of circuit failure
+            eye_stalk_motor.set_travel_limit(button22.is_pressed, button23.is_pressed)
+            # Control motor speed and direction based on joystick input
+            eye_stalk_motor.set_velocity(-ry_axis)
+            if ry_axis and not eye_stalk_motor.velocity:
+                # Velocity not set due to travel limit reached.
+                rumble(0.5, joystick)
 
             # Legacy as initially used for head controls before Cytron MOD10A Rev2
             # implemented for speed and direction
