@@ -6,7 +6,7 @@ from pulsectl_asyncio.pulsectl_async import PulseError
 
 from ears import Ears
 
-EAR_TRIGGER_THRESHOLD = 0.66
+EAR_TRIGGER_THRESHOLD = 0.67
 
 
 class Audio:
@@ -50,10 +50,7 @@ async def init_pygame():
 async def monitor_audio_output(ears: Ears):
     async with Audio() as pulse:
         server_info = await pulse.server_info()
-        print("Got server info", server_info)
         default_sink_info = await pulse.get_sink_by_name(server_info.default_sink_name)
-        print("Got default sink", default_sink_info)
-        async for level in pulse.subscribe_peak_sample(default_sink_info.monitor_source_name):
+        async for level in pulse.subscribe_peak_sample(default_sink_info.monitor_source_name, rate=50):
             if level > EAR_TRIGGER_THRESHOLD:
-                print(f"Audio level {level} is above threshold, flashing ears...")
                 ears.flash()

@@ -2,7 +2,7 @@ import asyncio
 
 from gpiozero import LED
 
-PERSIST_TIME_S = 0.4
+PERSIST_TIME_S = 0.3
 
 
 class Ears:
