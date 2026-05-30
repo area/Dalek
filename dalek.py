@@ -362,7 +362,7 @@ async def core():
             if not button24.is_pressed: # or (joystick.presses["cross"] and joystick.presses["triangle"]):
                 if not inebriated:
                     print("INEBRIATE")
-                    pygame.mixer.music.load('/home/davros/inebriate.mp3')
+                    pygame.mixer.music.load('./media/inebriate.mp3')
                     pygame.mixer.music.play()
                     inebriated = True  # Set the flag to prevent replaying
 
