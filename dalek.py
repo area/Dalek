@@ -10,6 +10,7 @@ from GP8XXX_IIC import GP8413
 import gpiozero
 import subprocess
 import random
+
 from gpiozero import Device, PWMOutputDevice, OutputDevice, Button
 from gpiozero.pins.native import NativeFactory
 from approxeng.input.selectbinder import ControllerResource
@@ -76,7 +77,7 @@ def mapStickToGP8413Value(stickValue):
 # Set pins for controller pad
 pins = {}
 
-for (pin) in [4,5,6,7,8,9,10,11,14,15,16,19,20]: #range(4,21):
+for (pin) in [4,5,6,7,8,9,10,11,14,15,16,19,20]:
     pins[pin] = gpiozero.LED(pin)#;
     #pins[pin].on(); Only if using low level relay trigger
 
@@ -93,9 +94,9 @@ buttonMappings = {
     #"circle": 7, # used to pump gin
     "cross": 6,
     "l1": 8,
-    "l2": 9,
+    "l2": 9,  # inebriate
     "r1": 5,  # water pistol
-    #"r2": 11, # ears
+    "r2": 11, # inebriate
     "ddown": 14, # skip 12 and 13 as these are pwm pins used elsewhere
     "dleft": 15,
     "dright": 16,
@@ -178,7 +179,8 @@ async def core():
 
     with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         while joystick.connected:
-            presses = joystick.check_presses()
+            # Check for new button presses and releases since this method was last called.
+            joystick.check_presses()
             for button in buttonMappings.keys():
                 if joystick.presses[button]:
                     print("Button pressed: " + button)
@@ -295,7 +297,7 @@ async def core():
             #     pins[20].off() # on()
 
             # Check if gin_button is not pressed
-            if not gin_button.is_pressed: # or (joystick.presses["cross"] and joystick.presses["triangle"]):
+            if (joystick.presses["l2"] and joystick.presses["r2"]) or not gin_button.is_pressed:
                 if not pygame.mixer.music.get_busy():
                     pygame.mixer.music.play()
 
