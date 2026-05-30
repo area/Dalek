@@ -73,10 +73,12 @@ def mapStickToGP8413Value(stickValue):
     return GP8413_value
 
 
+PIN_EAR = 11
+
 # Set pins for controller pad
 pins = {}
 
-for (pin) in [4,5,6,7,8,9,10,11,14,15,16,19,20]:
+for pin in [4,5,6,7,8,9,10,11,14,15,16,19,20]:
     pins[pin] = gpiozero.LED(pin)#;
     #pins[pin].on(); Only if using low level relay trigger
 
@@ -92,9 +94,7 @@ buttonMappings = {
     "triangle": 10,
     "cross": 6,
     "l1": 8,
-    "l2": 9,  # inebriate
     "r1": 5,  # water pistol
-    "r2": 11, # inebriate
     "ddown": 14, # skip 12 and 13 as these are pwm pins used elsewhere
     "dleft": 15,
     "dright": 16,
@@ -177,11 +177,8 @@ async def core():
     pygame = await init_pygame()
     pygame.mixer.music.load('./media/inebriate.mp3')
 
-    # Initialize variables for the time-delay gin dispensary
-    button24_not_pressed_start = None  # Tracks when button24 was first not pressed
-    gpio_pin_on = False  # Tracks the state of the GPIO pin dispensing gin
-
     gin_task: asyncio.Task | None = None
+    gin_joystick_button_states = [False, False]
 
     with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         while joystick.connected:
@@ -302,8 +299,18 @@ async def core():
             # else:
             #     pins[20].off() # on()
 
-            # Check if gin_button is not pressed
-            if (joystick.presses["l2"] and joystick.presses["r2"]) or not gin_button.is_pressed:
+            # The joystick "presses since last check" loops too quickly
+            # to catch both button presses at the same time, so we track
+            # the joint state ourselves.
+            if joystick.presses["l2"]:
+                gin_joystick_button_states[0] = True
+            elif joystick.releases["l2"]:
+                gin_joystick_button_states[0] = False
+            if joystick.presses["r2"]:
+                gin_joystick_button_states[1] = True
+            elif joystick.releases["r2"]:
+                gin_joystick_button_states[1] = False
+            if all(gin_joystick_button_states) or not gin_button.is_pressed:
                 if not pygame.mixer.music.get_busy():
                     pygame.mixer.music.play()
 
@@ -316,7 +323,7 @@ async def core():
             await asyncio.sleep(0)
 
 
-ears = Ears(pins[11])
+ears = Ears(pins[PIN_EAR])
 
 
 async def main():
