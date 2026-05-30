@@ -167,9 +167,11 @@ def rumble(duration_s: float, joystick):
     joystick.rumble(duration_s / 1000)
 
 
-async def pump_gin():
+async def pump_gin(pygame):
     # Make sure they really want it.
     await asyncio.sleep(2)
+    if not pygame.mixer.music.get_busy():
+        pygame.mixer.music.play()
     pins[7].on()
 
 
@@ -311,11 +313,8 @@ async def core():
             elif joystick.releases["r2"]:
                 gin_joystick_button_states[1] = False
             if all(gin_joystick_button_states) or not gin_button.is_pressed:
-                if not pygame.mixer.music.get_busy():
-                    pygame.mixer.music.play()
-
                 if not gin_task or gin_task.done():
-                    gin_task = asyncio.create_task(pump_gin())
+                    gin_task = asyncio.create_task(pump_gin(pygame))
             elif gin_task:
                 pins[7].off()
                 gin_task.cancel()
