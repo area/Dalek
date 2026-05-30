@@ -157,7 +157,7 @@ head_motor = TravelLimitedMotor(
     velocity_scaling=(5 / 6, 2 / 3),
 )
 eye_stalk_motor = TravelLimitedMotor(
-    pwn_pin=gpiozero.PWMOutputDevice(13),  # GPIO pin for motor 2 PWM1
+    pwm_pin=gpiozero.PWMOutputDevice(13),  # GPIO pin for motor 2 PWM1
     direction_pin=gpiozero.OutputDevice(26),  # GPIO pin for motor 2 direction,
     velocity_scaling=(0.5, 0.5),
 )
@@ -335,4 +335,3 @@ async def main():
 
 
 asyncio.run(main())
-
