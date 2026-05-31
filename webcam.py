@@ -1,14 +1,92 @@
+import threading
+from functools import partial
+
 import cv2
-from signal import pause
 import asyncio
 import dlib
-#import logging
+import mediapipe as mp
+from mediapipe.tasks.python import vision
 
 #Create the tracker we will use
 tracker = dlib.correlation_tracker()
 
 
-# Define your webcam-related functions here
+class FaceTracker:
+    def __init__(self):
+        base_options = mp.tasks.BaseOptions(
+            model_asset_path="./media/blaze_face_full_range_sparse.tflite",
+        )
+        options = vision.FaceDetectorOptions(
+            base_options=base_options,
+        )
+        self.detector = vision.FaceDetector.create_from_options(options)
+        self.capture_thread = None
+        self.capture_running = False
+        self.latest_frame = None
+
+    def _capture(self, camera):
+        while self.capture_running:
+            ret, frame = camera.read()
+            if ret:
+                self.latest_frame = frame
+            else:
+                self.latest_frame = None
+        camera.release()
+
+    def start_capture(self):
+        if self.capture_running:
+            return
+        camera = cv2.VideoCapture(0)
+        self.camera_thread = threading.Thread(
+            target=partial(self._capture, camera),
+            daemon=True,
+        )
+        self.capture_running = True
+        self.camera_thread.start()
+
+    def stop_capture(self):
+        if not self.capture_running:
+            return
+        self.capture_running = False
+        self.camera_thread.join()
+        self.camera_thread.stop()
+
+    def track(self):
+        if not self.capture_running:
+            return
+        if self.latest_frame is None:
+            return
+        frame_rgb = cv2.cvtColor(self.latest_frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(
+            image_format=mp.ImageFormat.SRGB,
+            data=frame_rgb,
+        )
+        result = self.detector.detect(mp_image)
+        faces_by_size = sorted(
+            result.detections,
+            key = lambda d: d.bounding_box.width * d.bounding_box.height,
+            reverse=True,
+        )
+        if not faces_by_size:
+            return
+        face_box = faces_by_size[0].bounding_box
+        img_centre = (mp_image.width / 2, mp_image.height / 2)
+        face_centre = (face_box.origin_x + face_box.width / 2, face_box.origin_y + face_box.height / 2)
+        face_offset = (face_centre[0] - img_centre[0], face_centre[1] - img_centre[1])
+        face_offset_weighted = (face_offset[0] / img_centre[0], face_offset[1] / img_centre[1])
+        return face_offset_weighted
+
+
+async def face_track():
+    """
+    Utility function for running FaceTracker outside of Dalek control.
+    """
+    tracker = FaceTracker()
+    tracker.start_capture()
+    while True:
+        tracker.track()
+        await asyncio.sleep(0)
+
 
 class Webcam:
     def __init__(self):
