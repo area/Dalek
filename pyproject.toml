@@ -1,0 +1,23 @@
+[project]
+name = "dalek"
+version = "0.0.1"
+description = "You are an enemy of the Daleks!"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "adafruit-blinka>=9.1.0,<10",
+    "approxeng-input>=2.6.4,<3",
+    "dlib>=20.0.1,<21",
+    "gp8xxx-iic>=0.0.4,<1",
+    "gpiozero>=2.0.1,<3",
+    "mediapipe>=0.10.35,<1",
+    "opencv-python>=4.13.0.92,<5",
+    "pulsectl-asyncio>=1.2.2,<2",
+]
+
+[build-system]
+requires = ["uv_build < 0.12"]
+build-backend = "uv_build"
+
+[project.scripts]
+dalek = "dalek:dalek"

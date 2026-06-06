@@ -1,8 +1,8 @@
+import asyncio
 import threading
 from functools import partial
 
 import cv2
-import asyncio
 import dlib
 import mediapipe as mp
 from mediapipe.tasks.python import vision
@@ -14,7 +14,7 @@ tracker = dlib.correlation_tracker()
 class FaceTracker:
     def __init__(self):
         base_options = mp.tasks.BaseOptions(
-            model_asset_path="./media/blaze_face_full_range_sparse.tflite",
+            model_asset_path="./media/blaze_face_full_range.tflite",
         )
         options = vision.FaceDetectorOptions(
             base_options=base_options,

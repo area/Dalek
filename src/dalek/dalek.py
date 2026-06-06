@@ -1,30 +1,21 @@
 # Need floating point division of integers
-
 from __future__ import division
-import RPi.GPIO as GPIO
+import asyncio
+import subprocess
 import time
+
 import board
 import busio
-#import adafruit_mcp4728 - DAC used for old joystick
-from GP8XXX_IIC import GP8413
 import gpiozero
-import subprocess
-
-from gpiozero import Device, PWMOutputDevice, OutputDevice, Button
-from gpiozero.pins.native import NativeFactory
 from approxeng.input.selectbinder import ControllerResource
-from signal import pause
-from webcam import Webcam
-import asyncio
+from GP8XXX_IIC import GP8413
 
-#import logging
-from audio import init_pygame, monitor_audio_output
-from ears import Ears
-from motor import TravelLimitedMotor
-from utils import throttle
+from dalek.audio import init_pygame, monitor_audio_output
+from dalek.ears import Ears
+from dalek.motor import TravelLimitedMotor
+from dalek.utils import throttle
+from dalek.webcam import Webcam
 
-#time.sleep(5)
-#webcam = Webcam()
 try:
     webcam = Webcam()
     webcam_available = True
@@ -83,11 +74,11 @@ for pin in [4,5,6,7,8,9,10,11,14,15,16,19,20]:
     #pins[pin].on(); Only if using low level relay trigger
 
 # Set up input pins for buttons with external pull-up resistors (hence pull_up=False)
-button17 = Button(17, pull_up=False)
-button18 = Button(18, pull_up=False)
-button22 = Button(22, pull_up=False)
-button23 = Button(23, pull_up=False)
-gin_button = Button(24, pull_up=False) # Gin dispense button on gun
+button17 = gpiozero.Button(17, pull_up=False)
+button18 = gpiozero.Button(18, pull_up=False)
+button22 = gpiozero.Button(22, pull_up=False)
+button23 = gpiozero.Button(23, pull_up=False)
+gin_button = gpiozero.Button(24, pull_up=False) # Gin dispense button on gun
 
 buttonMappings = {
     "square": 4,

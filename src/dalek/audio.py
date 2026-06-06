@@ -4,7 +4,7 @@ import os
 from pulsectl_asyncio import PulseAsync
 from pulsectl_asyncio.pulsectl_async import PulseError
 
-from ears import Ears
+from dalek.ears import Ears
 
 EAR_TRIGGER_THRESHOLD = 0.67
 
