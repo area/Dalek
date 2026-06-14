@@ -266,7 +266,7 @@ async def core():
             # Check button states before setting motor speed on eye up/down axis
             # These are the opposite of the head rotation as switches wired normally closed
             # as failsafe in case of circuit failure
-            eye_stalk_motor.set_travel_limit(button22.is_pressed, button23.is_pressed)
+            eye_stalk_motor.set_travel_limit(button23.is_pressed, button22.is_pressed)
             # Control motor speed and direction based on joystick input
             eye_stalk_motor.set_velocity(-ry_axis)
             if ry_axis and not eye_stalk_motor.velocity:
