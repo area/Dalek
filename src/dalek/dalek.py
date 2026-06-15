@@ -21,6 +21,7 @@ try:
     webcam_available = True
 except Exception as e:
     print(f"Webcam initialization failed: {e}")
+    webcam = None
     webcam_available = False
 
 # Set the default pin factory to native (BCM numbering, not physical pin number)
@@ -69,11 +70,12 @@ PIN_EAR = 11
 # Set pins for controller pad
 pins = {}
 
-for pin in [4,5,6,7,8,9,10,11,14,15,16,19,20]:
+for pin in [4,5,6,7,8,9,10,11,14,15,16,19,20,21]:
     pins[pin] = gpiozero.LED(pin)#;
     #pins[pin].on(); Only if using low level relay trigger
 
 # Set up input pins for buttons with external pull-up resistors (hence pull_up=False)
+
 button17 = gpiozero.Button(17, pull_up=False)
 button18 = gpiozero.Button(18, pull_up=False)
 button22 = gpiozero.Button(22, pull_up=False)
@@ -89,9 +91,9 @@ buttonMappings = {
     "ddown": 14, # skip 12 and 13 as these are pwm pins used elsewhere
     "dleft": 15,
     "dright": 16,
-    #"dup": 17,
-    #"start": 18,
-    # "select": 19, # this is 'select' on pihut controller - to toggle joustmania
+    #"dup": 19,
+    "start": 21, # second relay - toggle the wheelchair controller on and off
+    # "select": , # this is 'select' on pihut controller - to toggle joustmania
     # "home": 20 # this is 'analog' on pihut controller - to toggle disco mode
 }
 
@@ -144,12 +146,12 @@ while GP8413.begin():
 head_motor = TravelLimitedMotor(
     pwm_pin=gpiozero.PWMOutputDevice(12),  # GPIO pin for motor 1 PWM0
     direction_pin=gpiozero.OutputDevice(25),  # GPIO pin for motor 1 direction
-    velocity_scaling=(5 / 6, 2 / 3),
+    velocity_scaling=(0.4, 0.4),
 )
 eye_stalk_motor = TravelLimitedMotor(
     pwm_pin=gpiozero.PWMOutputDevice(13),  # GPIO pin for motor 2 PWM1
     direction_pin=gpiozero.OutputDevice(26),  # GPIO pin for motor 2 direction,
-    velocity_scaling=(0.5, 0.5),
+    velocity_scaling=(0.65, 0.65),
 )
 
 
@@ -203,7 +205,7 @@ async def core():
                 pins[20].toggle()
                 joystick.rumble(4000)  # Rumble for 4.0 seconds
 
-            if webcam_available:
+            if webcam_available and webcam:
                 if joystick.presses["rs"]:
                     #Toggle face tracking
                     webcam.face_tracking = not webcam.face_tracking
@@ -225,11 +227,11 @@ async def core():
 
             #print("rx: " + str(rx_axis) + " ry: " + str(ry_axis))
             # If right stick being used, set face tracking to false
-            if rx_axis != 0 or ry_axis != 0:
+            if webcam and (rx_axis != 0 or ry_axis != 0):
                 webcam.face_tracking = False
                 print("Face tracking disabled via stick override")
 
-            if (webcam.face_tracking):
+            if webcam and (webcam.face_tracking):
                 try:
                     x, y = webcam.get_direction()
                     print("face tracking, setting eye position")
@@ -318,7 +320,7 @@ ears = Ears(pins[PIN_EAR])
 
 async def main():
     tasks = [core(), monitor_audio_output(ears)]
-    if webcam_available:
+    if webcam_available and webcam:
         tasks.append(webcam.start())
     await asyncio.gather(*tasks)
 

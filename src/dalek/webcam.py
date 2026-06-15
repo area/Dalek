@@ -4,8 +4,8 @@ from functools import partial
 
 import cv2
 import dlib
-import mediapipe as mp
-from mediapipe.tasks.python import vision
+#import mediapipe as mp
+#from mediapipe.tasks.python import vision
 
 #Create the tracker we will use
 tracker = dlib.correlation_tracker()
