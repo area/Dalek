@@ -19,5 +19,8 @@ dependencies = [
 requires = ["uv_build < 0.12"]
 build-backend = "uv_build"
 
+[tool.uv.sources]
+mediapipe = { path = "vendor/mediapipe-0.10.36-cp312-cp312-linux_aarch64.whl" }
+
 [project.scripts]
 dalek = "dalek:dalek"
