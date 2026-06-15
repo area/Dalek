@@ -3,7 +3,7 @@ name = "dalek"
 version = "0.0.1"
 description = "You are an enemy of the Daleks!"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "adafruit-blinka>=9.1.0,<10",
     "approxeng-input>=2.6.4,<3",
