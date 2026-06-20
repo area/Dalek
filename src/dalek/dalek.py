@@ -13,6 +13,7 @@ from GP8XXX_IIC import GP8413
 from dalek.audio import init_pygame, monitor_audio_output
 from dalek.ears import Ears
 from dalek.motor import TravelLimitedMotor
+from dalek.snake import run as run_snake
 from dalek.utils import throttle
 #from dalek.webcam import Webcam
 from dalek.webcam_fdlite import Webcam
@@ -71,12 +72,12 @@ PIN_EAR = 11
 # Set pins for controller pad
 pins = {}
 
-for pin in [4,5,6,7,8,9,10,11,14,15,16,19,20,21]:
+for pin in [4,5,6,7,8,9,10,11,14,15,16,19,20]:
     pins[pin] = gpiozero.LED(pin)#;
     #pins[pin].on(); Only if using low level relay trigger
 
 # Set up input pins for buttons with external pull-up resistors (hence pull_up=False)
-
+# these are the limit switches for the head roatation and eye stalk up/down travel limits
 button17 = gpiozero.Button(17, pull_up=False)
 button18 = gpiozero.Button(18, pull_up=False)
 button22 = gpiozero.Button(22, pull_up=False)
@@ -93,7 +94,7 @@ buttonMappings = {
     "dleft": 15,
     "dright": 16,
     #"dup": 19,
-    "start": 21, # second relay - toggle the wheelchair controller on and off
+    #"start": 21, # second relay - toggle the wheelchair controller on and off
     # "select": , # this is 'select' on pihut controller - to toggle joustmania
     # "home": 20 # this is 'analog' on pihut controller - to toggle disco mode
 }
@@ -176,6 +177,7 @@ async def core():
     gin_task: asyncio.Task | None = None
     gin_joystick_button_states = [False, False]
     stick_override_active = False
+    snake_task: asyncio.Task | None = None
 
     with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         while joystick.connected:
@@ -193,17 +195,29 @@ async def core():
 
             if joystick.presses["select"]:
                 print("Select pushed")
-                #If joust not running, start it
-                res = subprocess.run("sudo supervisorctl status joustmania".split(" "), capture_output=True)
-                print(res.stdout)
 
-                if ("STOPPED" in res.stdout.decode("utf-8")):
+                snake_running = snake_task is not None and not snake_task.done()
+                res = subprocess.run("sudo supervisorctl status joustmania".split(" "), capture_output=True)
+                status = res.stdout.decode("utf-8")
+                print(status)
+                joust_running = "RUNNING" in status and "STOPPED" not in status
+
+                if snake_running:
+                    print("Switching from snake to joustmania")
+                    snake_task.cancel()
+                    snake_task = None
                     subprocess.run("sudo supervisorctl start joustmania".split(" "))
-                else:
+                elif joust_running:
+                    print("Stopping joustmania")
                     subprocess.run("sudo /home/davros/JoustMania/kill_processes.sh".split(" "))
+                else:
+                    print("Starting snake")
+                    subprocess.run("sudo /home/davros/JoustMania/kill_processes.sh".split(" "))
+                    snake_task = asyncio.create_task(run_snake(joystick))
+
                 joystick.rumble(2000)  # Rumble for 2.0 seconds
 
-            if joystick.presses["home"]:
+            if joystick.presses["home"]: # This is 'analog' on the pihut controller - to toggle disco mode
                 pins[20].toggle()
                 joystick.rumble(4000)  # Rumble for 4.0 seconds
 
@@ -217,15 +231,26 @@ async def core():
             lx_axis = joystick['lx']
             ly_axis = joystick['ly']
             #print(" lx: " + str(lx_axis) + "  ly: " + str(ly_axis))
-            GP8413.set_dac_out_voltage(mapStickToGP8413Value(-lx_axis), channel=0)#l/r -ve because chair reversed
-            GP8413.set_dac_out_voltage(mapStickToGP8413Value(ly_axis), channel=1) #f/r
+            if not (snake_task is not None and not snake_task.done()):
+                GP8413.set_dac_out_voltage(mapStickToGP8413Value(-lx_axis), channel=0)#l/r -ve because chair reversed
+                GP8413.set_dac_out_voltage(mapStickToGP8413Value(ly_axis), channel=1) #f/r
             # Original DAC for original joystick emulation
             #mcp4728.channel_b.raw_value = mapStickToDacValue(-lx_axis) # -ve because chair reversed
             #mcp4728.channel_a.raw_value = mapStickToDacValue(ly_axis)
 
             # Right stick controls head left right, eye up down, but currently only in a binary sense
+            # Disable stick/motor processing while snake is running
+            snake_active = snake_task is not None and not snake_task.done()
+
             rx_axis = joystick['rx']
             ry_axis = joystick['ry']
+
+            if snake_active:
+                # Zero axes so motor commands below have no effect
+                lx_axis = 0
+                ly_axis = 0
+                rx_axis = 0
+                ry_axis = 0
 
             #print("rx: " + str(rx_axis) + " ry: " + str(ry_axis))
             # If right stick being used, set face tracking to false
@@ -237,7 +262,7 @@ async def core():
             else:
                 stick_override_active = False
 
-            if webcam and (webcam.face_tracking):
+            if webcam and (webcam.face_tracking) and not snake_active:
                 try:
                     x, y = webcam.get_direction()
                     print("face tracking, setting eye position")
