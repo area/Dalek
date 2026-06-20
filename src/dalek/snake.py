@@ -8,6 +8,7 @@ GRID_MAP[row][col] gives the chain index for that LED.
 Edit it to match your physical wiring.
 """
 
+import argparse
 import asyncio
 import random
 
@@ -94,6 +95,26 @@ def _render(strip: PixelStrip, snake: list, food: tuple) -> None:
     strip.show()
 
 
+class DummyPixelStrip:
+    def __init__(self, led_count, *args, **kwargs):
+        self.led_count = led_count
+        self.pixels = [COLOR_OFF] * led_count
+
+    def begin(self):
+        return True
+
+    def setPixelColor(self, index, color):
+        if 0 <= index < self.led_count:
+            self.pixels[index] = color
+
+    def show(self):
+        # No hardware attached; keep this quiet or print a minimal status.
+        print(f"DummyStrip show: head={self.pixels.count(COLOR_SNAKE_HEAD)}, food={self.pixels.count(COLOR_FOOD)}")
+
+    def numPixels(self):
+        return self.led_count
+
+
 def _spawn_food(snake: list) -> tuple:
     """Pick a random cell not occupied by the snake."""
     occupied = set(snake)
@@ -148,21 +169,25 @@ def _direction_from_joystick(joystick, current_dir: tuple) -> tuple:
 # Public entry point
 # ---------------------------------------------------------------------------
 
-async def run(joystick=None) -> int:
+async def run(joystick=None, use_dummy_strip=False) -> int:
     """
     Play one game of Snake.
 
     Args:
         joystick: An approxeng joystick resource (already open).
                   If None the snake moves automatically (demo / test mode).
+        use_dummy_strip: If True, run without WS2811 hardware attached.
 
     Returns:
         Final score (number of food items eaten).
     """
-    strip = PixelStrip(
-        LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA,
-        LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL,
-    )
+    if use_dummy_strip:
+        strip = DummyPixelStrip(LED_COUNT)
+    else:
+        strip = PixelStrip(
+            LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA,
+            LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL,
+        )
     strip.begin()
 
     # Initial state: snake starts in the middle of the grid, moving right
@@ -242,15 +267,26 @@ async def run(joystick=None) -> int:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import argparse
     from approxeng.input.selectbinder import ControllerResource
 
+    parser = argparse.ArgumentParser(description="Run snake on WS2811 LEDs")
+    parser.add_argument("--dummy", action="store_true", help="Run without LED hardware")
+    parser.add_argument("--no-joystick", action="store_true", help="Run demo mode without joystick")
+    args = parser.parse_args()
+
     async def _main():
-        try:
-            with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
-                print("Controller found. Starting Snake...")
-                await run(joystick)
-        except Exception:
-            print("No controller found. Running in demo mode...")
-            await run(joystick=None)
+        joystick = None
+        if not args.no_joystick and not args.dummy:
+            try:
+                with ControllerResource(dead_zone=0.1, hot_zone=0) as js:
+                    joystick = js
+                    print("Controller found. Starting Snake...")
+                    await run(joystick, use_dummy_strip=args.dummy)
+                    return
+            except Exception:
+                print("No controller found. Running in demo mode...")
+
+        await run(joystick=None, use_dummy_strip=args.dummy)
 
     asyncio.run(_main())
