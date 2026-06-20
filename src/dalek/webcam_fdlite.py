@@ -20,11 +20,16 @@ class Webcam:
         # Initialize fdlite detector upfront
         print("Initializing fdlite face detector...")
         try:
-            self.detector = FaceDetection(model_type=FaceDetectionModel.FRONT_CAMERA)
-            print("fdlite detector ready")
+            self.detector = FaceDetection(model_type=FaceDetectionModel.FULL_SPARSE)
+            print("fdlite detector ready (FULL_SPARSE)")
         except Exception as e:
-            print(f"Failed to initialize fdlite: {e}")
-            self.detector = None
+            print(f"Failed to initialize fdlite FULL_SPARSE: {e}")
+            try:
+                self.detector = FaceDetection(model_type=FaceDetectionModel.FRONT_CAMERA)
+                print("fdlite detector ready (fallback FRONT_CAMERA)")
+            except Exception as e2:
+                print(f"Failed to initialize fallback fdlite FRONT_CAMERA: {e2}")
+                self.detector = None
         
         # Face tracking state
         self.x_direction = 0
@@ -34,17 +39,29 @@ class Webcam:
         # Adaptive tracking parameters
         self.tracked_center = None        # (x, y) of currently tracked face
         self.lost_frame_count = 0         # Grace period counter
-        self.MAX_LOST_FRAMES = 15         # ~0.3 seconds at 30fps before resetting
-        self.MAX_DISTANCE_THRESHOLD = 120 # Max pixels face can move between frames
+        self.MAX_LOST_FRAMES = 20         # ~0.3 seconds at 30fps before resetting
+        self.MAX_DISTANCE_THRESHOLD = 200 # Max pixels face can move between frames
         
         self.count = 0
     
     def _get_box_center(self, bbox, img_size):
         """Calculate pixel coordinates of a bounding box center."""
-        scaled = bbox.scaled(img_size)
+        scaled = bbox.scale(img_size)
         cx = int((scaled.xmin + scaled.xmax) / 2)
         cy = int((scaled.ymin + scaled.ymax) / 2)
         return (cx, cy), scaled
+
+    def _annotate_faces(self, frame, faces, img_size):
+        """Return a copy of the frame with bounding boxes drawn around detected faces."""
+        annotated = frame.copy()
+        for face in faces:
+            _, scaled_box = self._get_box_center(face.bbox, img_size)
+            x1 = int(scaled_box.xmin)
+            y1 = int(scaled_box.ymin)
+            x2 = int(scaled_box.xmax)
+            y2 = int(scaled_box.ymax)
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        return annotated
     
     def _detect_faces(self, frame):
         """Detect faces in frame using fdlite."""
@@ -86,6 +103,7 @@ class Webcam:
             # Rotate frame 180 degrees
             frame = cv2.rotate(frame, cv2.ROTATE_180)
             
+            annotated_frame = None
             if self.face_tracking:
                 if self.detector is None:
                     self.x_direction = 0
@@ -94,6 +112,8 @@ class Webcam:
                 
                 # Detect faces
                 faces, img_size = self._detect_faces(frame)
+                if faces:
+                    annotated_frame = self._annotate_faces(frame, faces, img_size)
                 
                 best_match_face = None
                 min_distance = float('inf')
@@ -136,7 +156,7 @@ class Webcam:
                         if best_match_face:
                             self.tracked_center = best_match_face[0]
                             self.lost_frame_count = 0
-                            print("🎯 New Target Locked!")
+                            print("New Target found!")
                 else:
                     # No faces detected
                     if self.tracked_center is not None:
@@ -144,7 +164,7 @@ class Webcam:
                 
                 # Clear target if lost too long
                 if self.lost_frame_count > self.MAX_LOST_FRAMES and self.tracked_center is not None:
-                    print("❌ Target lost. Searching...")
+                    print("Target lost. Searching...")
                     self.tracked_center = None
                 
                 # Calculate direction output
@@ -165,5 +185,8 @@ class Webcam:
             self.count = (self.count + 1) % 100
             if self.count == 0:
                 cv2.imwrite("face.jpg", frame)
+                if self.face_tracking:
+                    debug_frame = annotated_frame if annotated_frame is not None else frame
+                    cv2.imwrite("face_debug.jpg", debug_frame)
         
         self.camera.release()

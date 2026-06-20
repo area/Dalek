@@ -146,7 +146,7 @@ while GP8413.begin():
 head_motor = TravelLimitedMotor(
     pwm_pin=gpiozero.PWMOutputDevice(12),  # GPIO pin for motor 1 PWM0
     direction_pin=gpiozero.OutputDevice(25),  # GPIO pin for motor 1 direction
-    velocity_scaling=(0.4, 0.4),
+    velocity_scaling=(0.35, 0.35),
 )
 eye_stalk_motor = TravelLimitedMotor(
     pwm_pin=gpiozero.PWMOutputDevice(13),  # GPIO pin for motor 2 PWM1
@@ -174,6 +174,7 @@ async def core():
 
     gin_task: asyncio.Task | None = None
     gin_joystick_button_states = [False, False]
+    stick_override_active = False
 
     with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         while joystick.connected:
@@ -228,8 +229,12 @@ async def core():
             #print("rx: " + str(rx_axis) + " ry: " + str(ry_axis))
             # If right stick being used, set face tracking to false
             if webcam and (rx_axis != 0 or ry_axis != 0):
+                if not stick_override_active:
+                    print("Face tracking disabled via stick override")
+                    stick_override_active = True
                 webcam.face_tracking = False
-                print("Face tracking disabled via stick override")
+            else:
+                stick_override_active = False
 
             if webcam and (webcam.face_tracking):
                 try:
@@ -238,6 +243,10 @@ async def core():
                     print("x: " + str(x) + " y: " + str(y))
                     ry_axis = -y * 1.5
                     rx_axis = x * 1.7
+
+                    # Clamp face-tracking drive values to the allowed motor range.
+                    rx_axis = max(-1.0, min(1.0, rx_axis))
+                    ry_axis = max(-1.0, min(1.0, ry_axis))
 
                     MIN_TRACKING_DRIVE = 0.6
 
@@ -251,6 +260,10 @@ async def core():
                     elif (abs(rx_axis) < MIN_TRACKING_DRIVE):
                         rx_axis = MIN_TRACKING_DRIVE * rx_axis / abs(rx_axis)
 
+                    # Ensure the final axis values remain within [-1, 1]
+                    rx_axis = max(-1.0, min(1.0, rx_axis))
+                    ry_axis = max(-1.0, min(1.0, ry_axis))
+
                 except Exception as e:
                         print(f"Error during face tracking: {e}")
 
@@ -258,9 +271,13 @@ async def core():
             # switches are normally open so circuit is closed when pressed. Not ideal
             # as no failsafe in case of circuit failure, but limited by hardware options
             # for toggle switches
+            if rx_axis != 0 or ry_axis != 0:
+                print(f"Head drive x: {rx_axis} y: {ry_axis}")
             head_motor.set_travel_limit(not button17.is_pressed, not button18.is_pressed)
             # Control motor speed and direction based on joystick input
+            #print(f"Head request: {-rx_axis} (dir pin before={head_motor._direction_pin.value}, pwm before={head_motor._pwm_pin.value})")
             head_motor.set_velocity(-rx_axis)
+            #print(f"Head actual: {head_motor.velocity} (dir pin after={head_motor._direction_pin.value}, pwm after={head_motor._pwm_pin.value})")
             if rx_axis and not head_motor.velocity:
                 # Velocity not set due to travel limit reached.
                 rumble(0.5, joystick)
