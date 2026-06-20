@@ -3,3 +3,5 @@ __pycache__
 dalek_venv
 dalek_venv_fdlite
 face.jpg
+face_detected.jpg
+face_debug.jpg

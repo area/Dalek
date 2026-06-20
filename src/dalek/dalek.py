@@ -14,7 +14,8 @@ from dalek.audio import init_pygame, monitor_audio_output
 from dalek.ears import Ears
 from dalek.motor import TravelLimitedMotor
 from dalek.utils import throttle
-from dalek.webcam import Webcam
+#from dalek.webcam import Webcam
+from dalek.webcam_fdlite import Webcam
 
 try:
     webcam = Webcam()
