@@ -31,14 +31,6 @@ GRID_HEIGHT = 4
 
 # ---------------------------------------------------------------------------
 # Lookup table: GRID_MAP[row][col] → chain index
-#
-# Default assumes a zig-zag wiring pattern:
-#   Row 0: L→R  (indices  0–13)
-#   Row 1: R→L  (indices 27–14)
-#   Row 2: L→R  (indices 28–41)
-#   Row 3: R→L  (indices 55–42)
-#
-# Replace any value to match your actual wiring.
 # ---------------------------------------------------------------------------
 
 GRID_MAP = [
@@ -233,6 +225,7 @@ async def run(joystick=None, use_dummy_strip=False) -> int:
 
                 if new_head == food:
                     score += 1
+                    TICK_RATE *= 0.95  # Speed up the game slightly
                     print(f"Score: {score}")
                     if len(snake) == LED_COUNT:
                         # Filled the whole grid — you win!
