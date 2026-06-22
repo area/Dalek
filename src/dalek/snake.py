@@ -11,8 +11,13 @@ Edit it to match your physical wiring.
 import argparse
 import asyncio
 import random
+import traceback
 
-from rpi_ws281x import Color, PixelStrip
+try:
+    from rpi_ws281x import Color, PixelStrip
+except ImportError:
+    Color = lambda r, g, b: (r << 16) | (g << 8) | b
+    PixelStrip = None
 
 # ---------------------------------------------------------------------------
 # Hardware configuration
@@ -40,6 +45,12 @@ GRID_MAP = [
     [0, 7,  8, 15, 16, 23, 24, 52, 51, 44, 43, 36, 35, 28],  # Row 0 (bottom)
 ]
 # LEDs are linked through columns 1-7 along left side , then back to front middle, and around right side
+
+INDEX_TO_XY = {
+    GRID_MAP[y][x]: (x, y)
+    for y in range(GRID_HEIGHT)
+    for x in range(GRID_WIDTH)
+}
 # ---------------------------------------------------------------------------
 # Colours
 # ---------------------------------------------------------------------------
@@ -91,6 +102,7 @@ class DummyPixelStrip:
     def __init__(self, led_count, *args, **kwargs):
         self.led_count = led_count
         self.pixels = [COLOR_OFF] * led_count
+        self.head_pos = None
 
     def begin(self):
         return True
@@ -98,10 +110,17 @@ class DummyPixelStrip:
     def setPixelColor(self, index, color):
         if 0 <= index < self.led_count:
             self.pixels[index] = color
+            if color == COLOR_SNAKE_HEAD:
+                self.head_pos = index
+            elif index == self.head_pos and color != COLOR_SNAKE_HEAD:
+                self.head_pos = None
 
     def show(self):
-        # No hardware attached; keep this quiet or print a minimal status.
-        print(f"DummyStrip show: head={self.pixels.count(COLOR_SNAKE_HEAD)}, food={self.pixels.count(COLOR_FOOD)}")
+        head_xy = INDEX_TO_XY.get(self.head_pos) if self.head_pos is not None else None
+        if head_xy is not None:
+            print(f"DummyStrip show: head={self.pixels.count(COLOR_SNAKE_HEAD)}, food={self.pixels.count(COLOR_FOOD)}, head_xy={head_xy}")
+        else:
+            print(f"DummyStrip show: head={self.pixels.count(COLOR_SNAKE_HEAD)}, food={self.pixels.count(COLOR_FOOD)}")
 
     def numPixels(self):
         return self.led_count
@@ -131,13 +150,13 @@ def _direction_from_joystick(joystick, current_dir: tuple) -> tuple:
     dx, dy = current_dir
 
     # D-pad (discrete presses)
-    if joystick.presses.get("dleft"):
+    if joystick.presses["dleft"]:
         dx, dy = -1, 0
-    elif joystick.presses.get("dright"):
+    elif joystick.presses["dright"]:
         dx, dy = 1, 0
-    elif joystick.presses.get("dup"):
+    elif joystick.presses["dup"]:
         dx, dy = 0, -1
-    elif joystick.presses.get("ddown"):
+    elif joystick.presses["ddown"]:
         dx, dy = 0, 1
     else:
         # Analogue left stick
@@ -173,14 +192,24 @@ async def run(joystick=None, use_dummy_strip=False) -> int:
     Returns:
         Final score (number of food items eaten).
     """
-    if use_dummy_strip:
+    if use_dummy_strip or PixelStrip is None:
+        if PixelStrip is None and not use_dummy_strip:
+            print("rpi_ws281x unavailable, using DummyPixelStrip instead.")
         strip = DummyPixelStrip(LED_COUNT)
     else:
         strip = PixelStrip(
             LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA,
             LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL,
         )
-    strip.begin()
+    try:
+        strip.begin()
+    except Exception as e:
+        if use_dummy_strip:
+            raise
+        print(f"LED init failed: {e}. Falling back to DummyPixelStrip.")
+        strip = DummyPixelStrip(LED_COUNT)
+        strip.begin()
+    tick_rate = TICK_RATE
 
     # Initial state: snake starts in the middle of the grid, moving right
     snake = [(GRID_WIDTH // 2, GRID_HEIGHT // 2)]
@@ -199,15 +228,17 @@ async def run(joystick=None, use_dummy_strip=False) -> int:
             now = loop.time()
 
             # --- Input --------------------------------------------------
+            # Do NOT call joystick.check_presses() here — dalek's main loop
+            # already calls it every iteration on the same shared joystick object.
+            # Calling it again would consume presses before dalek can read them.
             if joystick is not None:
-                joystick.check_presses()
                 new_dir = _direction_from_joystick(joystick, direction)
                 # Prevent 180° reversal
                 if not (new_dir[0] == -direction[0] and new_dir[1] == -direction[1]):
                     direction = new_dir
 
             # --- Game tick ----------------------------------------------
-            if now - last_tick >= TICK_RATE:
+            if now - last_tick >= tick_rate:
                 last_tick = now
 
                 head = snake[0]
@@ -225,7 +256,7 @@ async def run(joystick=None, use_dummy_strip=False) -> int:
 
                 if new_head == food:
                     score += 1
-                    TICK_RATE *= 0.95  # Speed up the game slightly
+                    tick_rate *= 0.95  # Speed up the game slightly
                     print(f"Score: {score}")
                     if len(snake) == LED_COUNT:
                         # Filled the whole grid — you win!

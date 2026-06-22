@@ -85,7 +85,7 @@ button23 = gpiozero.Button(23, pull_up=False)
 gin_button = gpiozero.Button(24, pull_up=False) # Gin dispense button on gun
 
 buttonMappings = {
-    "square": 4,
+    #"square": 4,
     "triangle": 10,
     "cross": 6,
     "l1": 8,
@@ -148,7 +148,7 @@ while GP8413.begin():
 head_motor = TravelLimitedMotor(
     pwm_pin=gpiozero.PWMOutputDevice(12),  # GPIO pin for motor 1 PWM0
     direction_pin=gpiozero.OutputDevice(25),  # GPIO pin for motor 1 direction
-    velocity_scaling=(0.35, 0.35),
+    velocity_scaling=(0.45, 0.35),
 )
 eye_stalk_motor = TravelLimitedMotor(
     pwm_pin=gpiozero.PWMOutputDevice(13),  # GPIO pin for motor 2 PWM1
@@ -170,9 +170,21 @@ async def pump_gin(pygame):
     pins[7].on()
 
 
+
 async def core():
     pygame = await init_pygame()
     pygame.mixer.music.load('./media/inebriate.mp3')
+
+    try:
+        sound_irrigated = pygame.mixer.Sound('./media/irrigated.wav')
+        sound_irrigate = pygame.mixer.Sound('./media/irrigate.wav')
+    except Exception as e:
+        print(f"Failed to load R1 sounds. (Note: Older pygame versions prefer .wav or .ogg over .mp3 for Sound objects): {e}")
+        sound_irrigated = None
+        sound_irrigate = None
+
+    r1_window_start_time = 0.0
+    irrigated_channel = None
 
     gin_task: asyncio.Task | None = None
     gin_joystick_button_states = [False, False]
@@ -181,6 +193,21 @@ async def core():
 
     with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
         while joystick.connected:
+            # Handle any finished snake task before processing new input.
+            if snake_task is not None and snake_task.done():
+                if snake_task.cancelled():
+                    print("Snake task cancelled")
+                else:
+                    exc = snake_task.exception()
+                    if exc is not None:
+                        import traceback
+                        tb = snake_task.get_stack()
+                        print(f"Snake task ended with error: {exc}")
+                        traceback.print_exception(type(exc), exc, exc.__traceback__)
+                    else:
+                        print("Snake task completed normally")
+                snake_task = None
+
             # Check for new button presses and releases since this method was last called.
             joystick.check_presses()
             for button in buttonMappings.keys():
@@ -188,10 +215,30 @@ async def core():
                     print("Button pressed: " + button)
                     if buttonMappings[button] is not None:
                         pins[buttonMappings[button]].on(); # off(); if using low level trigger
+
+                    # Soundbites for water pistol
+                    if button == "r1":
+                        current_time = time.time()
+                        
+                        # Has it been 60+ seconds since our last window started?
+                        if current_time - r1_window_start_time >= 60.0:
+                            # Start a new 1-minute window and play "irrigated.mp3"
+                            r1_window_start_time = current_time
+                            if sound_irrigated:
+                                irrigated_channel = sound_irrigated.play()
+                        else:
+                            # Inside the 1-minute window: Only play "irrigate.mp3" if irrigated is done
+                            is_irrigated_playing = irrigated_channel is not None and irrigated_channel.get_busy()
+                            if not is_irrigated_playing:
+                                if sound_irrigate:
+                                    sound_irrigate.play()
+                                    
+
                 if joystick.releases[button]:
                     print("Button released: " + button)
                     if buttonMappings[button] is not None:
                         pins[buttonMappings[button]].off(); # on();
+            
 
             if joystick.presses["select"]:
                 print("Select pushed")
@@ -212,7 +259,6 @@ async def core():
                     subprocess.run("sudo /home/davros/JoustMania/kill_processes.sh".split(" "))
                 else:
                     print("Starting snake")
-                    subprocess.run("sudo /home/davros/JoustMania/kill_processes.sh".split(" "))
                     snake_task = asyncio.create_task(run_snake(joystick))
 
                 joystick.rumble(2000)  # Rumble for 2.0 seconds
@@ -231,8 +277,11 @@ async def core():
             lx_axis = joystick['lx']
             ly_axis = joystick['ly']
             #print(" lx: " + str(lx_axis) + "  ly: " + str(ly_axis))
-            if not (snake_task is not None and not snake_task.done()):
-                GP8413.set_dac_out_voltage(mapStickToGP8413Value(-lx_axis), channel=0)#l/r -ve because chair reversed
+
+            snake_active = snake_task is not None and not snake_task.done()
+            
+            if not snake_active:
+                GP8413.set_dac_out_voltage(mapStickToGP8413Value(-lx_axis), channel=0)#l/r -ve because chair physically reversed
                 GP8413.set_dac_out_voltage(mapStickToGP8413Value(ly_axis), channel=1) #f/r
             # Original DAC for original joystick emulation
             #mcp4728.channel_b.raw_value = mapStickToDacValue(-lx_axis) # -ve because chair reversed
@@ -240,7 +289,6 @@ async def core():
 
             # Right stick controls head left right, eye up down, but currently only in a binary sense
             # Disable stick/motor processing while snake is running
-            snake_active = snake_task is not None and not snake_task.done()
 
             rx_axis = joystick['rx']
             ry_axis = joystick['ry']
