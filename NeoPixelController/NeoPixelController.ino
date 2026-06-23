@@ -3,7 +3,7 @@
 // Multi-string hardware configuration
 #define STRIP_COUNT 2
 const int STRIP_PINS[STRIP_COUNT]   = {6, 7};   // Channel 0 = Pin 6, Channel 1 = Pin 7
-const int STRIP_LENGTHS[STRIP_COUNT] = {16, 8};  // Channel 0 has 16 LEDs, Channel 1 has 8 LEDs
+const int STRIP_LENGTHS[STRIP_COUNT] = {56, 16};  // Channel 0 has 56 LEDs, Channel 1 has 16 LEDs
 
 Adafruit_NeoPixel strips[STRIP_COUNT];
 

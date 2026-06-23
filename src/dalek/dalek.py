@@ -16,6 +16,7 @@ from dalek.motor import TravelLimitedMotor
 from dalek.snake import run as run_snake
 from dalek.utils import throttle
 from dalek.mock_joystick import MockJoystick
+from dalek.lights import ArduinoLedController
 #from dalek.webcam import Webcam
 from dalek.webcam_fdlite import Webcam
 
@@ -175,8 +176,15 @@ async def pump_gin(pygame):
 
 
 async def core():
+
+    # Instantiate arduino light module over its USB connection string
+    lights = ArduinoLedController(vendor_id="1a86", product_id="7523")
+    
+    # Enforce a safe, predictable blackout right at boot time
+    await lights.global_blackout()
+
     pygame = await init_pygame()
-    pygame.mixer.music.load('./media/inebriate2.mp3')
+    pygame.mixer.music.load('./media/inebriate.mp3')
 
     try:
         sound_irrigated = pygame.mixer.Sound('./media/irrigated.wav')
@@ -185,6 +193,7 @@ async def core():
         print(f"Failed to load R1 sounds. (Note: Older pygame versions prefer .wav or .ogg over .mp3 for Sound objects): {e}")
         sound_irrigated = None
         sound_irrigate = None
+
 
     r1_window_start_time = 0.0
     irrigated_channel = None
@@ -280,7 +289,9 @@ async def core():
                     subprocess.run("sudo /home/davros/JoustMania/kill_processes.sh".split(" "))
                 else:
                     print("Starting snake")
-                    snake_task = asyncio.create_task(run_snake(joystick))
+                    # Visual Feedback: Flash the entire dome green right before spawning the game loop
+                    await lights.set_strip_color(channel=0, r=0, g=255, b=0)
+                    snake_task = asyncio.create_task(run_snake(joystick, lights))
 
                 joystick.rumble(2000)  # Rumble for 2.0 seconds
 

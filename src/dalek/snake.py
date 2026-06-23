@@ -1,77 +1,45 @@
 """
-snake.py  —  Snake game on a 14×4 WS2811 LED grid.
+snake.py — Snake game on a 14×4 WS2811 LED grid routed via Arduino packets.
 
 Grid coordinates: (x, y) where x=0 is left, y=0 is top.
 Both axes wrap (left↔right, top↔bottom).
-
-GRID_MAP[row][col] gives the chain index for that LED.
-Edit it to match your physical wiring.
 """
 
-import argparse
 import asyncio
 import random
-import traceback
-
-try:
-    from rpi_ws281x import Color, PixelStrip
-except ImportError:
-    Color = lambda r, g, b: (r << 16) | (g << 8) | b
-    PixelStrip = None
 
 # ---------------------------------------------------------------------------
-# Hardware configuration
+# Hardware & Routing configuration
 # ---------------------------------------------------------------------------
-
-LED_COUNT = 56        # Total LEDs in chain
-LED_PIN = 21          # GPIO pin (18 = PWM0, 21 = PCM, 10 = SPI MOSI)
-LED_FREQ_HZ = 800000  # WS2811 data rate
-LED_DMA = 10          # DMA channel
-LED_BRIGHTNESS =255   # 0–255
-LED_INVERT = False    # True if using NPN transistor level-shift
-LED_CHANNEL = 0       # 0 for GPIO 18/10, 1 for GPIO 13/19
+# Specify which Arduino channel strip controls your 56-LED snake grid matrix
+SNAKE_CHANNEL = 0  
+LED_COUNT = 56     
 
 GRID_WIDTH = 14
 GRID_HEIGHT = 4
 
-# ---------------------------------------------------------------------------
-# Lookup table: GRID_MAP[row][col] → chain index
-# ---------------------------------------------------------------------------
-
+# Lookup table: GRID_MAP[row][col] → chain index matching physical wiring layout
 GRID_MAP = [
     [3, 4, 11, 12, 19, 20, 27, 55, 48, 47, 40, 39, 32, 31],  # Row 3 (top)
     [2, 5, 10, 13, 18, 21, 26, 54, 49, 46, 41, 38, 33, 30],  # Row 2 
     [1, 6,  9, 14, 17, 22, 25, 53, 50, 45, 42, 37, 34, 29],  # Row 1 
     [0, 7,  8, 15, 16, 23, 24, 52, 51, 44, 43, 36, 35, 28],  # Row 0 (bottom)
 ]
-# LEDs are linked through columns 1-7 along left side , then back to front middle, and around right side
-
-INDEX_TO_XY = {
-    GRID_MAP[y][x]: (x, y)
-    for y in range(GRID_HEIGHT)
-    for x in range(GRID_WIDTH)
-}
-# ---------------------------------------------------------------------------
-# Colours
-# ---------------------------------------------------------------------------
-
-COLOR_OFF        = Color(0,   0,   0)
-COLOR_SNAKE_HEAD = Color(0,   255, 0)    # Bright green
-COLOR_SNAKE_BODY = Color(0,   80,  0)    # Dim green
-COLOR_FOOD       = Color(255, 0,   0)    # Red
 
 # ---------------------------------------------------------------------------
-# Game settings
+# Colours (Converted to raw RGB tuples for direct packet integration)
 # ---------------------------------------------------------------------------
+COLOR_OFF        = (0, 0, 0)
+COLOR_SNAKE_HEAD = (0, 255, 0)    # Bright green
+COLOR_SNAKE_BODY = (0, 80, 0)     # Dim green
+COLOR_FOOD       = (255, 0, 0)     # Red
 
-TICK_RATE = 0.25    # Seconds per game step (lower = faster)
-LOOP_SLEEP = 0.02   # Asyncio sleep between input polls (seconds)
-
-# Dead-zone for analogue stick direction input
+TICK_RATE = 0.25    
+LOOP_SLEEP = 0.02   
 STICK_THRESHOLD = 0.5
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Async Packet Helpers
 # ---------------------------------------------------------------------------
 
 def _chain_index(x: int, y: int) -> int:
@@ -79,55 +47,29 @@ def _chain_index(x: int, y: int) -> int:
     return GRID_MAP[y % GRID_HEIGHT][x % GRID_WIDTH]
 
 
-def _set_pixel(strip: PixelStrip, x: int, y: int, color: Color) -> None:
-    strip.setPixelColor(_chain_index(x, y), color)
+async def _render(lights, snake: list, food: tuple) -> None:
+    """Renders snake and food frames sequentially over the serial packet line."""
+    if lights is None:
+        return
 
-
-def _clear(strip: PixelStrip) -> None:
-    for i in range(LED_COUNT):
-        strip.setPixelColor(i, COLOR_OFF)
-
-
-def _render(strip: PixelStrip, snake: list, food: tuple) -> None:
-    """Render snake and food to the strip (does not call show())."""
-    _clear(strip)
-    _set_pixel(strip, food[0], food[1], COLOR_FOOD)
+    # 1. Wipe the entire grid channel instantly using magic index 255
+    await lights.clear_strip(channel=SNAKE_CHANNEL)
+    
+    # 2. Queue up the food pixel
+    fx, fy = food
+    await lights.set_pixel(SNAKE_CHANNEL, _chain_index(fx, fy), *COLOR_FOOD)
+    
+    # 3. Queue up the trailing snake segments backwards
     for seg in reversed(snake):
-        _set_pixel(strip, seg[0], seg[1], COLOR_SNAKE_BODY)
-    _set_pixel(strip, snake[0][0], snake[0][1], COLOR_SNAKE_HEAD)
-    strip.show()
-
-
-class DummyPixelStrip:
-    def __init__(self, led_count, *args, **kwargs):
-        self.led_count = led_count
-        self.pixels = [COLOR_OFF] * led_count
-        self.head_pos = None
-
-    def begin(self):
-        return True
-
-    def setPixelColor(self, index, color):
-        if 0 <= index < self.led_count:
-            self.pixels[index] = color
-            if color == COLOR_SNAKE_HEAD:
-                self.head_pos = index
-            elif index == self.head_pos and color != COLOR_SNAKE_HEAD:
-                self.head_pos = None
-
-    def show(self):
-        head_xy = INDEX_TO_XY.get(self.head_pos) if self.head_pos is not None else None
-        if head_xy is not None:
-            print(f"DummyStrip show: head={self.pixels.count(COLOR_SNAKE_HEAD)}, food={self.pixels.count(COLOR_FOOD)}, head_xy={head_xy}")
-        else:
-            print(f"DummyStrip show: head={self.pixels.count(COLOR_SNAKE_HEAD)}, food={self.pixels.count(COLOR_FOOD)}")
-
-    def numPixels(self):
-        return self.led_count
+        await lights.set_pixel(SNAKE_CHANNEL, _chain_index(seg[0], seg[1]), *COLOR_SNAKE_BODY)
+        
+    # 4. Paint the active head over everything else
+    hx, hy = snake[0]
+    await lights.set_pixel(SNAKE_CHANNEL, _chain_index(hx, hy), *COLOR_SNAKE_HEAD)
 
 
 def _spawn_food(snake: list) -> tuple:
-    """Pick a random cell not occupied by the snake."""
+    """Pick a random cell not occupied by the snake body layer."""
     occupied = set(snake)
     candidates = [
         (x, y)
@@ -139,17 +81,8 @@ def _spawn_food(snake: list) -> tuple:
 
 
 def _direction_from_joystick(joystick, current_dir: tuple) -> tuple:
-    """
-    Read direction from the joystick.
-
-    Priority:
-      1. D-pad presses  (dleft, dright, dup, ddown)
-      2. Left analogue stick if past STICK_THRESHOLD
-      3. Current direction unchanged
-    """
     dx, dy = current_dir
 
-    # D-pad (discrete presses)
     if joystick.presses["dleft"]:
         dx, dy = -1, 0
     elif joystick.presses["dright"]:
@@ -159,7 +92,6 @@ def _direction_from_joystick(joystick, current_dir: tuple) -> tuple:
     elif joystick.presses["ddown"]:
         dx, dy = 0, 1
     else:
-        # Analogue left stick
         lx = joystick["lx"]
         ly = joystick["ly"]
         if abs(lx) > abs(ly):
@@ -175,50 +107,23 @@ def _direction_from_joystick(joystick, current_dir: tuple) -> tuple:
 
     return dx, dy
 
-
 # ---------------------------------------------------------------------------
-# Public entry point
+# Main Game Loop Entry Point
 # ---------------------------------------------------------------------------
 
-async def run(joystick=None, use_dummy_strip=False) -> int:
-    """
-    Play one game of Snake.
-
-    Args:
-        joystick: An approxeng joystick resource (already open).
-                  If None the snake moves automatically (demo / test mode).
-        use_dummy_strip: If True, run without WS2811 hardware attached.
-
-    Returns:
-        Final score (number of food items eaten).
-    """
-    if use_dummy_strip or PixelStrip is None:
-        if PixelStrip is None and not use_dummy_strip:
-            print("rpi_ws281x unavailable, using DummyPixelStrip instead.")
-        strip = DummyPixelStrip(LED_COUNT)
-    else:
-        strip = PixelStrip(
-            LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA,
-            LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL,
-        )
-    try:
-        strip.begin()
-    except Exception as e:
-        if use_dummy_strip:
-            raise
-        print(f"LED init failed: {e}. Falling back to DummyPixelStrip.")
-        strip = DummyPixelStrip(LED_COUNT)
-        strip.begin()
+async def run(joystick=None, lights=None) -> int:
+    """Plays one game of Snake using the external dynamic lights module."""
     tick_rate = TICK_RATE
 
-    # Initial state: snake starts in the middle of the grid, moving right
+    # Initial state initialization
     snake = [(GRID_WIDTH // 2, GRID_HEIGHT // 2)]
     direction = (1, 0)
     food = _spawn_food(snake)
     score = 0
     alive = True
 
-    _render(strip, snake, food)
+    # Draw the initial game board frame
+    await _render(lights, snake, food)
 
     loop = asyncio.get_event_loop()
     last_tick = loop.time()
@@ -227,17 +132,13 @@ async def run(joystick=None, use_dummy_strip=False) -> int:
         while alive:
             now = loop.time()
 
-            # --- Input --------------------------------------------------
-            # Do NOT call joystick.check_presses() here — dalek's main loop
-            # already calls it every iteration on the same shared joystick object.
-            # Calling it again would consume presses before dalek can read them.
+            # --- Process Movement Input ---
             if joystick is not None:
                 new_dir = _direction_from_joystick(joystick, direction)
-                # Prevent 180° reversal
                 if not (new_dir[0] == -direction[0] and new_dir[1] == -direction[1]):
                     direction = new_dir
 
-            # --- Game tick ----------------------------------------------
+            # --- Process Game Mechanics Step ---
             if now - last_tick >= tick_rate:
                 last_tick = now
 
@@ -245,9 +146,8 @@ async def run(joystick=None, use_dummy_strip=False) -> int:
                 new_head = (
                     (head[0] + direction[0]) % GRID_WIDTH,
                     (head[1] + direction[1]) % GRID_HEIGHT,
-                )
+                    )
 
-                # Self-collision → game over
                 if new_head in snake:
                     alive = False
                     break
@@ -256,61 +156,30 @@ async def run(joystick=None, use_dummy_strip=False) -> int:
 
                 if new_head == food:
                     score += 1
-                    tick_rate *= 0.95  # Speed up the game slightly
+                    tick_rate *= 0.95  # Gradually accelerate frame timing
                     print(f"Score: {score}")
                     if len(snake) == LED_COUNT:
-                        # Filled the whole grid — you win!
-                        print("You win!")
+                        print("Perfect Game! You win!")
                         alive = False
                         break
                     food = _spawn_food(snake)
                 else:
                     snake.pop()
 
-                _render(strip, snake, food)
+                # Refresh display frame
+                await _render(lights, snake, food)
 
             await asyncio.sleep(LOOP_SLEEP)
 
     finally:
-        # Game-over flash
-        for _ in range(4):
-            _clear(strip)
-            strip.show()
-            await asyncio.sleep(0.15)
-            _render(strip, snake, food)
-            await asyncio.sleep(0.15)
-        _clear(strip)
-        strip.show()
+        # Game over blinking sequence
+        if lights is not None:
+            for _ in range(4):
+                await lights.clear_strip(channel=SNAKE_CHANNEL)
+                await asyncio.sleep(0.15)
+                await _render(lights, snake, food)
+                await asyncio.sleep(0.15)
+            await lights.clear_strip(channel=SNAKE_CHANNEL)
 
     print(f"Game over. Final score: {score}")
     return score
-
-
-# ---------------------------------------------------------------------------
-# Standalone entry point
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import argparse
-    from approxeng.input.selectbinder import ControllerResource
-
-    parser = argparse.ArgumentParser(description="Run snake on WS2811 LEDs")
-    parser.add_argument("--dummy", action="store_true", help="Run without LED hardware")
-    parser.add_argument("--no-joystick", action="store_true", help="Run demo mode without joystick")
-    args = parser.parse_args()
-
-    async def _main():
-        joystick = None
-        if not args.no_joystick and not args.dummy:
-            try:
-                with ControllerResource(dead_zone=0.1, hot_zone=0) as js:
-                    joystick = js
-                    print("Controller found. Starting Snake...")
-                    await run(joystick, use_dummy_strip=args.dummy)
-                    return
-            except Exception:
-                print("No controller found. Running in demo mode...")
-
-        await run(joystick=None, use_dummy_strip=args.dummy)
-
-    asyncio.run(_main())
