@@ -48,24 +48,29 @@ def _chain_index(x: int, y: int) -> int:
 
 
 async def _render(lights, snake: list, food: tuple) -> None:
-    """Renders snake and food frames sequentially over the serial packet line."""
     if lights is None:
         return
 
-    # 1. Wipe the entire grid channel instantly using magic index 255
-    await lights.clear_strip(channel=SNAKE_CHANNEL)
-    
-    # 2. Queue up the food pixel
+    # Build the complete picture layout for this frame frame in memory
+    frame_data = {}
+
+    # 1. Add food position
     fx, fy = food
-    await lights.set_pixel(SNAKE_CHANNEL, _chain_index(fx, fy), *COLOR_FOOD)
-    
-    # 3. Queue up the trailing snake segments backwards
+    frame_data[_chain_index(fx, fy)] = COLOR_FOOD
+
+    # 2. Add snake body layout
     for seg in reversed(snake):
-        await lights.set_pixel(SNAKE_CHANNEL, _chain_index(seg[0], seg[1]), *COLOR_SNAKE_BODY)
-        
-    # 4. Paint the active head over everything else
+        frame_data[_chain_index(seg[0], seg[1])] = COLOR_SNAKE_BODY
+
+    # 3. Layer the head on top
     hx, hy = snake[0]
-    await lights.set_pixel(SNAKE_CHANNEL, _chain_index(hx, hy), *COLOR_SNAKE_HEAD)
+    frame_data[_chain_index(hx, hy)] = COLOR_SNAKE_HEAD
+    
+    # Debug print to console
+    print(f"Frame Rendered -> Head: {snake[0]} | Food: {food} | Snake Length: {len(snake)} | Packets Sent: {len(frame_data) + 1}")
+
+    # Send the whole dictionary data map down the pipe in a single step
+    await lights.send_frame(channel=SNAKE_CHANNEL, pixel_dict=frame_data)
 
 
 def _spawn_food(snake: list) -> tuple:

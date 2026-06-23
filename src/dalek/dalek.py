@@ -20,15 +20,24 @@ from dalek.lights import ArduinoLedController
 #from dalek.webcam import Webcam
 from dalek.webcam_fdlite import Webcam
 
+## usage: PYTHONPATH=src ./dalek_venv_fdlite/bin/python -u -m dalek.dalek
+
 DEBUG_MODE = False  # Toggle to False when running on controller rather than keyboard
+
 
 try:
     webcam = Webcam()
-    webcam_available = True
+    # Double check that the webcam object actually bound a hardware stream 
+    if hasattr(webcam, 'cap') and webcam.cap is not None and webcam.cap.isOpened():
+        webcam_available = True
+    else:
+        print("Webcam initialized but no active video stream found.")
+        webcam_available = False
 except Exception as e:
     print(f"Webcam initialization failed: {e}")
     webcam = None
     webcam_available = False
+
 
 # Set the default pin factory to native (BCM numbering, not physical pin number)
 #Device.pin_factory = NativeFactory() # seems not to work
@@ -281,19 +290,22 @@ async def core():
                     finally:
                         snake_task = None  # Safe to clear now
                     
+                    await lights.set_strip_color(channel=0, r=255, g=0, b=0) # flash all red on snake exit
+                    
                     # Start Joustmania only after Snake has cleared out
                     subprocess.run("sudo supervisorctl start joustmania".split(" "))
                     
                 elif joust_running:
                     print("Stopping joustmania")
                     subprocess.run("sudo /home/davros/JoustMania/kill_processes.sh".split(" "))
+                    await lights.set_strip_color(channel=0, r=0, g=0, b=255) # flash all blue on joust exit
                 else:
                     print("Starting snake")
                     # Visual Feedback: Flash the entire dome green right before spawning the game loop
                     await lights.set_strip_color(channel=0, r=0, g=255, b=0)
                     snake_task = asyncio.create_task(run_snake(joystick, lights))
 
-                joystick.rumble(2000)  # Rumble for 2.0 seconds
+                joystick.rumble(2000)  # Rumble for 2.0 secondssource dalke_venv_fdlite
 
 
             if joystick.presses["home"]: # This is 'analog' on the pihut controller - to toggle disco mode

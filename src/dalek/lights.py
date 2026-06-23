@@ -1,6 +1,7 @@
 import asyncio
 import struct
 import serial
+import serial.tools.list_ports
 
 class ArduinoLedController:
     def __init__(self, vendor_id="1a86", product_id="7523", baudrate=115200):
@@ -63,6 +64,33 @@ class ArduinoLedController:
                     break
                 await asyncio.sleep(0.001)
 
+    async def send_frame(self, channel: int, pixel_dict: dict):
+        """
+        Sends an entire frame state at once.
+        pixel_dict should be a mapping of { led_index: (r, g, b) }
+        """
+        async with self.lock:
+            loop = asyncio.get_running_loop()
+            
+            # 1. Turn off the whole strip first in memory
+            packet = struct.pack(self.packet_format, self.START_MARKER, channel, 255, 0, 0, 0, self.END_MARKER)
+            await loop.run_in_executor(None, self.ser.write, packet)
+            
+            # Flush acknowledgment for the clear command
+            while True:
+                if (await loop.run_in_executor(None, self.ser.read, 1)) == b'A': 
+                    break
+
+            # 2. Blast all active pixels down the serial line sequentially without blocking mid-loop
+            for index, (r, g, b) in pixel_dict.items():
+                packet = struct.pack(self.packet_format, self.START_MARKER, channel, index, r, g, b, self.END_MARKER)
+                await loop.run_in_executor(None, self.ser.write, packet)
+                
+                # Instantly clear the confirmation byte out of the hardware buffer
+                while True:
+                    if (await loop.run_in_executor(None, self.ser.read, 1)) == b'A': 
+                        break
+                    
     async def set_pixel(self, channel: int, index: int, r: int, g: int, b: int):
         """Address a specific LED on a specific channel strip."""
         await self._send_packet(channel, index, r, g, b)
