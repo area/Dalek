@@ -15,8 +15,11 @@ from dalek.ears import Ears
 from dalek.motor import TravelLimitedMotor
 from dalek.snake import run as run_snake
 from dalek.utils import throttle
+from dalek.mock_joystick import MockJoystick
 #from dalek.webcam import Webcam
 from dalek.webcam_fdlite import Webcam
+
+DEBUG_MODE = False  # Toggle to False when running on controller rather than keyboard
 
 try:
     webcam = Webcam()
@@ -173,7 +176,7 @@ async def pump_gin(pygame):
 
 async def core():
     pygame = await init_pygame()
-    pygame.mixer.music.load('./media/inebriate.mp3')
+    pygame.mixer.music.load('./media/inebriate2.mp3')
 
     try:
         sound_irrigated = pygame.mixer.Sound('./media/irrigated.wav')
@@ -191,7 +194,15 @@ async def core():
     stick_override_active = False
     snake_task: asyncio.Task | None = None
 
-    with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
+    #Fall back to keybaord if in debug mode. left joy=wasd, right on arrow keys
+    if DEBUG_MODE:
+        controller_context = MockJoystick(button_mappings=buttonMappings)
+        print("--- RUNNING IN KEYBOARD DEBUG MODE ---")
+    else:
+        controller_context = ControllerResource(dead_zone=0.1, hot_zone=0)
+
+    #with ControllerResource(dead_zone=0.1, hot_zone=0) as joystick:
+    with controller_context as joystick:
         while joystick.connected:
             # Handle any finished snake task before processing new input.
             if snake_task is not None and snake_task.done():
@@ -232,14 +243,13 @@ async def core():
                             if not is_irrigated_playing:
                                 if sound_irrigate:
                                     sound_irrigate.play()
-                                    
+
 
                 if joystick.releases[button]:
                     print("Button released: " + button)
                     if buttonMappings[button] is not None:
                         pins[buttonMappings[button]].off(); # on();
             
-
             if joystick.presses["select"]:
                 print("Select pushed")
 
@@ -252,8 +262,19 @@ async def core():
                 if snake_running:
                     print("Switching from snake to joustmania")
                     snake_task.cancel()
-                    snake_task = None
+                    try:
+                        # Force the event loop to yield and wait until Snake is officially dead
+                        await snake_task
+                    except asyncio.CancelledError:
+                        print("Snake task cleanly terminated.")
+                    except Exception as e:
+                        print(f"Error during snake shutdown: {e}")
+                    finally:
+                        snake_task = None  # Safe to clear now
+                    
+                    # Start Joustmania only after Snake has cleared out
                     subprocess.run("sudo supervisorctl start joustmania".split(" "))
+                    
                 elif joust_running:
                     print("Stopping joustmania")
                     subprocess.run("sudo /home/davros/JoustMania/kill_processes.sh".split(" "))
@@ -262,6 +283,7 @@ async def core():
                     snake_task = asyncio.create_task(run_snake(joystick))
 
                 joystick.rumble(2000)  # Rumble for 2.0 seconds
+
 
             if joystick.presses["home"]: # This is 'analog' on the pihut controller - to toggle disco mode
                 pins[20].toggle()
@@ -402,6 +424,9 @@ async def core():
             elif gin_task:
                 pins[7].off()
                 gin_task.cancel()
+
+            if DEBUG_MODE:
+                joystick.clear_buffered_states()
 
             await asyncio.sleep(0)
 
