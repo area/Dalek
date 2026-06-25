@@ -1,20 +1,22 @@
 import asyncio
 import threading
 from functools import partial
+from pathlib import Path
 
 import cv2
 import dlib
-#import mediapipe as mp
-#from mediapipe.tasks.python import vision
+import mediapipe as mp
+from mediapipe.tasks.python import vision
 
 #Create the tracker we will use
 tracker = dlib.correlation_tracker()
 
 
 class FaceTracker:
-    def __init__(self):
+    def __init__(self, camera_path: int | str = 0):
+        self.camera_path = camera_path
         base_options = mp.tasks.BaseOptions(
-            model_asset_path="./media/blaze_face_full_range.tflite",
+            model_asset_path=str(Path(__file__).parent / "media" / "blaze_face_full_range_sparse.tflite"),
         )
         options = vision.FaceDetectorOptions(
             base_options=base_options,
@@ -36,7 +38,7 @@ class FaceTracker:
     def start_capture(self):
         if self.capture_running:
             return
-        camera = cv2.VideoCapture(0)
+        camera = cv2.VideoCapture(self.camera_path)
         self.camera_thread = threading.Thread(
             target=partial(self._capture, camera),
             daemon=True,
@@ -74,6 +76,7 @@ class FaceTracker:
         face_centre = (face_box.origin_x + face_box.width / 2, face_box.origin_y + face_box.height / 2)
         face_offset = (face_centre[0] - img_centre[0], face_centre[1] - img_centre[1])
         face_offset_weighted = (face_offset[0] / img_centre[0], face_offset[1] / img_centre[1])
+        print(face_offset_weighted)
         return face_offset_weighted
 
 

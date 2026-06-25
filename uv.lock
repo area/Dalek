@@ -351,7 +351,7 @@ dependencies = [
     { name = "sounddevice" },
 ]
 wheels = [
-    { filename = "mediapipe-0.10.36-cp312-cp312-linux_aarch64.whl", hash = "sha256:360a184dc7c921e3f872ea283e5fbc7fbc6606a0753c2d476db1985a1296341e" },
+    { filename = "mediapipe-0.10.36-cp312-cp312-linux_aarch64.whl", hash = "sha256:cff7f9019ced9f52d3e9a53a83040978f790e369a6391ec11785bfb65a002c30" },
 ]
 
 [package.metadata]
