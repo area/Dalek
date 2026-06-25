@@ -31,15 +31,15 @@ GRID_MAP = [
 # Colours (Converted to raw RGB tuples for direct packet integration)
 # ---------------------------------------------------------------------------
 COLOR_OFF        = (0, 0, 0)
-COLOR_SNAKE_HEAD = (255, 0, 0)    # Bright red
-COLOR_SNAKE_BODY = (60, 0, 0)     # Dim red
+COLOR_SNAKE_HEAD = (255, 0, 0)    # Bright green
+COLOR_SNAKE_BODY = (60, 0, 0)     # Dim green
 COLOR_FOOD       = (0, 0, 255)     # Blue
 
 TICK_RATE = 0.25    
 LOOP_SLEEP = 0.02   
-STICK_THRESHOLD = 0.2
+STICK_THRESHOLD = 0.1
 
-# --- NEW TWEAK: Vertical speed scaling ---
+# --- Vertical speed scaling because 4 pixels isn't very many ---
 VERTICAL_MULTIPLIER = 1.8  # 1.8x slower when moving up or down
 
 HIGH_SCORE_FILE = "snake_highscore.txt"
