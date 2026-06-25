@@ -215,13 +215,31 @@ async def run(joystick=None, lights=None, sounds=None) -> int:
             high_score = get_high_score()
             is_new_record = score > high_score
 
-            # 1. Clear board
+            # -------------------------------------------------------------
+            # DYNAMIC SCALING MATHS
+            # 1. Find the highest value we need to represent (minimum 56)
+            # -------------------------------------------------------------
+            max_val = max(56, max(score, high_score))
+            
+            # 2. Calculate the multiplier
+            scale_factor = 56 / max_val
+            
+            # 3. Apply the scale and cap at 56 physical LEDs
+            display_high_score = min(56, int(high_score * scale_factor))
+            display_score = min(56, int(score * scale_factor))
+
+            # 4. Guarantee at least 1 LED lights up if they scored anything, 
+            # even against an impossible high score.
+            if score > 0 and display_score == 0: display_score = 1
+            if high_score > 0 and display_high_score == 0: display_high_score = 1
+
+            # --- 1. Clear board ---
             await lights.clear_strip(channel=SNAKE_CHANNEL)
             await asyncio.sleep(0.5)
 
-            # 2. Draw High Score in Green
+            # --- 2. Draw High Score in Green ---
             score_render_data = {}
-            for i in range(high_score):
+            for i in range(display_high_score):
                 x = i // GRID_HEIGHT
                 y = i % GRID_HEIGHT
                 score_render_data[_chain_index(x, y)] = (0, 150, 0) 
@@ -230,16 +248,20 @@ async def run(joystick=None, lights=None, sounds=None) -> int:
             await lights.send_frame(channel=SNAKE_CHANNEL, pixel_dict=score_render_data)
             await asyncio.sleep(1.0) 
 
-            # 3. Animate Current Score in Red
-            for i in range(score):
+            # --- 3. Animate Current Score in Red ---
+            for i in range(display_score):
                 x = i // GRID_HEIGHT
                 y = i % GRID_HEIGHT
                 score_render_data[_chain_index(x, y)] = (255, 0, 0)
                 score_render_data[254] = (0, 0, 0)
                 await lights.send_frame(channel=SNAKE_CHANNEL, pixel_dict=score_render_data)
-                await asyncio.sleep(0.08)
+                
+                # Dynamically speed up the fill animation if the score is huge
+                # so the player isn't waiting forever.
+                fill_speed = max(0.02, 0.08 - (score * 0.0005))
+                await asyncio.sleep(fill_speed)
 
-            # 4. Judgement
+            # --- 4. Judgement ---
             if sounds:
                 if is_new_record:
                     if sounds.get("superior"): sounds["superior"].play()
@@ -255,6 +277,3 @@ async def run(joystick=None, lights=None, sounds=None) -> int:
             
             await asyncio.sleep(3.0)
             await lights.clear_strip(channel=SNAKE_CHANNEL)
-
-    print(f"Invaders Game Over. Final score: {score} | High Score: {get_high_score()}")
-    return score

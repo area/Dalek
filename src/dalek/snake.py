@@ -35,7 +35,7 @@ COLOR_SNAKE_HEAD = (255, 0, 0)    # Bright green
 COLOR_SNAKE_BODY = (60, 0, 0)     # Dim green
 COLOR_FOOD       = (0, 0, 255)     # Blue
 
-TICK_RATE = 0.25    
+TICK_RATE = 0.4    
 LOOP_SLEEP = 0.02   
 STICK_THRESHOLD = 0.1
 
