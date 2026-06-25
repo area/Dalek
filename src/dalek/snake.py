@@ -7,6 +7,7 @@ Both axes wrap (left↔right, top↔bottom).
 
 import asyncio
 import random
+import os
 
 # ---------------------------------------------------------------------------
 # Hardware & Routing configuration
@@ -30,9 +31,9 @@ GRID_MAP = [
 # Colours (Converted to raw RGB tuples for direct packet integration)
 # ---------------------------------------------------------------------------
 COLOR_OFF        = (0, 0, 0)
-COLOR_SNAKE_HEAD = (255, 0, 0)    # Bright green
-COLOR_SNAKE_BODY = (60, 0, 0)     # Dim green
-COLOR_FOOD       = (0, 0, 255)     # blue
+COLOR_SNAKE_HEAD = (255, 0, 0)    # Bright red
+COLOR_SNAKE_BODY = (60, 0, 0)     # Dim red
+COLOR_FOOD       = (0, 0, 255)     # Blue
 
 TICK_RATE = 0.25    
 LOOP_SLEEP = 0.02   
@@ -40,6 +41,25 @@ STICK_THRESHOLD = 0.2
 
 # --- NEW TWEAK: Vertical speed scaling ---
 VERTICAL_MULTIPLIER = 1.8  # 1.8x slower when moving up or down
+
+HIGH_SCORE_FILE = "snake_highscore.txt"
+
+# ---------------------------------------------------------------------------
+# Storage Helpers
+# ---------------------------------------------------------------------------
+
+def get_high_score() -> int:
+    if os.path.exists(HIGH_SCORE_FILE):
+        try:
+            with open(HIGH_SCORE_FILE, "r") as f:
+                return int(f.read().strip())
+        except ValueError:
+            return 0
+    return 0
+
+def save_high_score(score: int):
+    with open(HIGH_SCORE_FILE, "w") as f:
+        f.write(str(score))
 
 # ---------------------------------------------------------------------------
 # Async Packet Helpers
@@ -121,7 +141,7 @@ def _direction_from_joystick(joystick, current_dir: tuple) -> tuple:
 # Main Game Loop Entry Point
 # ---------------------------------------------------------------------------
 
-async def run(joystick=None, lights=None) -> int:
+async def run(joystick=None, lights=None, sounds=None) -> int:
     """Plays one game of Snake using the external dynamic lights module."""
     tick_rate = TICK_RATE
 
@@ -129,7 +149,7 @@ async def run(joystick=None, lights=None) -> int:
     snake = [(GRID_WIDTH // 2, GRID_HEIGHT // 2)]
     direction = (1, 0)
     
-    # NEW: Track the actual movement direction of the LAST executed step
+    # Track the actual movement direction of the LAST executed step
     last_executed_direction = (1, 0) 
     
     food = _spawn_food(snake)
@@ -150,7 +170,7 @@ async def run(joystick=None, lights=None) -> int:
             if joystick is not None:
                 new_dir = _direction_from_joystick(joystick, direction)
                 
-                # FIX: Compare against last_executed_direction instead of current input direction
+                # Compare against last_executed_direction instead of current input direction
                 if not (new_dir[0] == -last_executed_direction[0] and new_dir[1] == -last_executed_direction[1]):
                     direction = new_dir
 
@@ -194,14 +214,57 @@ async def run(joystick=None, lights=None) -> int:
             await asyncio.sleep(LOOP_SLEEP)
 
     finally:
-        # Game over blinking sequence
+        # --- ENDGAME HIGH SCORE SEQUENCE ---
         if lights is not None:
-            for _ in range(4):
-                await lights.clear_strip(channel=SNAKE_CHANNEL)
-                await asyncio.sleep(0.15)
-                await _render(lights, snake, food)
-                await asyncio.sleep(0.15)
+            high_score = get_high_score()
+            is_new_record = score > high_score
+
+            # 1. Clear the board for dramatic effect
+            await lights.clear_strip(channel=SNAKE_CHANNEL)
+            await asyncio.sleep(0.5)
+
+            # Draw High Score columns in Green
+            score_render_data = {}
+            for i in range(high_score):
+                x = i // GRID_HEIGHT
+                y = i % GRID_HEIGHT
+                score_render_data[_chain_index(x, y)] = (150, 0, 0) # Green (Base Record)
+            
+            score_render_data[254] = (0, 0, 0) # Latch
+            await lights.send_frame(channel=SNAKE_CHANNEL, pixel_dict=score_render_data)
+            
+            # Pause to show the target to beat
+            await asyncio.sleep(1.0) 
+
+            #Current Score fills in Red
+            for i in range(score):
+                x = i // GRID_HEIGHT
+                y = i % GRID_HEIGHT
+                score_render_data[_chain_index(x, y)] = (0, 255, 0) # Red (Player Score)
+                score_render_data[254] = (0, 0, 0)
+                await lights.send_frame(channel=SNAKE_CHANNEL, pixel_dict=score_render_data)
+                await asyncio.sleep(0.08) # Satisfying fast-fill effect
+
+            # judge them
+            if sounds:
+                if is_new_record:
+                    if sounds.get("superior"): 
+                        sounds["superior"].play()
+                    save_high_score(score)
+                    
+                    # Flash the winning score
+                    for _ in range(4):
+                        await lights.clear_strip(channel=SNAKE_CHANNEL)
+                        await asyncio.sleep(0.15)
+                        await lights.send_frame(channel=SNAKE_CHANNEL, pixel_dict=score_render_data)
+                        await asyncio.sleep(0.15)
+                else:
+                    if sounds.get("inferior"): 
+                        sounds["inferior"].play()
+            
+            # Leave score up for a bit
+            await asyncio.sleep(3.0)
             await lights.clear_strip(channel=SNAKE_CHANNEL)
 
-    print(f"Game over. Final score: {score}")
+    print(f"Game over. Final score: {score} | High Score: {get_high_score()}")
     return score

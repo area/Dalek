@@ -204,11 +204,18 @@ async def core():
     try:
         sound_irrigated = pygame.mixer.Sound('./media/irrigated.wav')
         sound_irrigate = pygame.mixer.Sound('./media/irrigate.wav')
+        sound_inferior = pygame.mixer.Sound('./media/inferior.wav')
+        sound_superior = pygame.mixer.Sound('./media/superior.wav')
+        # dict to pass to snake
+        snake_sounds = {
+            "inferior": sound_inferior,
+            "superior": sound_superior
+        }
     except Exception as e:
         print(f"Failed to load R1 sounds. (Note: Older pygame versions prefer .wav or .ogg over .mp3 for Sound objects): {e}")
         sound_irrigated = None
         sound_irrigate = None
-
+        snake_sounds = None
 
     r1_window_start_time = 0.0
     irrigated_channel = None
