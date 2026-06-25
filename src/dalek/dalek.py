@@ -82,12 +82,18 @@ def mapStickToGP8413Value(stickValue):
 
 PIN_EAR = 11
 
+## Other pins used: 
+# pin 4 provides power for 24v LEDS for snake/Joust
+
+
 # Set pins for controller pad
 pins = {}
 
 for pin in [4,5,6,7,8,9,10,11,14,15,16,19,20]:
     pins[pin] = gpiozero.LED(pin)#;
     #pins[pin].on(); Only if using low level relay trigger
+
+    # pin 4 provides power for 24v LEDS for snake/Joust
 
 # Set up input pins for buttons with external pull-up resistors (hence pull_up=False)
 # these are the limit switches for the head roatation and eye stalk up/down travel limits
@@ -98,7 +104,7 @@ button23 = gpiozero.Button(23, pull_up=False)
 gin_button = gpiozero.Button(24, pull_up=False) # Gin dispense button on gun
 
 buttonMappings = {
-    #"square": 4,
+    #"square": ,
     "triangle": 10,
     "cross": 6,
     "l1": 8,
@@ -237,36 +243,44 @@ async def core():
                         print("Snake task completed normally")
                 snake_task = None
 
+            snake_active = snake_task is not None and not snake_task.done()
+            # Only check presses for main Dalek functions if the snake isn't eating inputs!
+            if not snake_active:
             # Check for new button presses and releases since this method was last called.
-            joystick.check_presses()
-            for button in buttonMappings.keys():
-                if joystick.presses[button]:
-                    print("Button pressed: " + button)
-                    if buttonMappings[button] is not None:
-                        pins[buttonMappings[button]].on(); # off(); if using low level trigger
+                joystick.check_presses()
+                for button in buttonMappings.keys():
+                    if joystick.presses[button]:
+                        print("Button pressed: " + button)
+                        if buttonMappings[button] is not None:
+                            pins[buttonMappings[button]].on(); # off(); if using low level trigger
 
-                    # Soundbites for water pistol
-                    if button == "r1":
-                        current_time = time.time()
-                        
-                        # Has it been 60+ seconds since our last window started?
-                        if current_time - r1_window_start_time >= 60.0:
-                            # Start a new 1-minute window and play "irrigated.mp3"
-                            r1_window_start_time = current_time
-                            if sound_irrigated:
-                                irrigated_channel = sound_irrigated.play()
-                        else:
-                            # Inside the 1-minute window: Only play "irrigate.mp3" if irrigated is done
-                            is_irrigated_playing = irrigated_channel is not None and irrigated_channel.get_busy()
-                            if not is_irrigated_playing:
-                                if sound_irrigate:
-                                    sound_irrigate.play()
+                        # Soundbites for water pistol
+                        if button == "r1":
+                            current_time = time.time()
+                            
+                            # Has it been 60+ seconds since our last window started?
+                            if current_time - r1_window_start_time >= 60.0:
+                                # Start a new 1-minute window and play "irrigated.mp3"
+                                r1_window_start_time = current_time
+                                if sound_irrigated:
+                                    irrigated_channel = sound_irrigated.play()
+                            else:
+                                # Inside the 1-minute window: Only play "irrigate.mp3" if irrigated is done
+                                is_irrigated_playing = irrigated_channel is not None and irrigated_channel.get_busy()
+                                if not is_irrigated_playing:
+                                    if sound_irrigate:
+                                        sound_irrigate.play()
 
 
-                if joystick.releases[button]:
-                    print("Button released: " + button)
-                    if buttonMappings[button] is not None:
-                        pins[buttonMappings[button]].off(); # on();
+                    if joystick.releases[button]:
+                        print("Button released: " + button)
+                        if buttonMappings[button] is not None:
+                            pins[buttonMappings[button]].off(); # on();
+            
+            else:
+                # If snake IS active, we still check select so we can quit!
+                joystick.check_presses()
+                
             
             if joystick.presses["select"]:
                 print("Select pushed")
@@ -291,16 +305,21 @@ async def core():
                         snake_task = None  # Safe to clear now
                     
                     await lights.set_strip_color(channel=0, r=255, g=0, b=0) # flash all red on snake exit
-                    
+                    await lights.global_blackout()
+
                     # Start Joustmania only after Snake has cleared out
                     subprocess.run("sudo supervisorctl start joustmania".split(" "))
                     
                 elif joust_running:
                     print("Stopping joustmania")
-                    subprocess.run("sudo /home/davros/JoustMania/kill_processes.sh".split(" "))
                     await lights.set_strip_color(channel=0, r=0, g=0, b=255) # flash all blue on joust exit
+                    subprocess.run("sudo /home/davros/JoustMania/kill_processes.sh".split(" "))
+                    await lights.global_blackout()
+                    pins[4].off
                 else:
                     print("Starting snake")
+                    pins[4].on()
+                    await asyncio.sleep(0.5)
                     # Visual Feedback: Flash the entire dome green right before spawning the game loop
                     await lights.set_strip_color(channel=0, r=0, g=255, b=0)
                     snake_task = asyncio.create_task(run_snake(joystick, lights))
@@ -451,7 +470,7 @@ async def core():
             if DEBUG_MODE:
                 joystick.clear_buffered_states()
 
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.01)
 
 
 ears = Ears(pins[PIN_EAR])

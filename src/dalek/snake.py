@@ -30,13 +30,16 @@ GRID_MAP = [
 # Colours (Converted to raw RGB tuples for direct packet integration)
 # ---------------------------------------------------------------------------
 COLOR_OFF        = (0, 0, 0)
-COLOR_SNAKE_HEAD = (0, 255, 0)    # Bright green
-COLOR_SNAKE_BODY = (0, 80, 0)     # Dim green
-COLOR_FOOD       = (255, 0, 0)     # Red
+COLOR_SNAKE_HEAD = (255, 0, 0)    # Bright green
+COLOR_SNAKE_BODY = (60, 0, 0)     # Dim green
+COLOR_FOOD       = (0, 0, 255)     # blue
 
 TICK_RATE = 0.25    
 LOOP_SLEEP = 0.02   
-STICK_THRESHOLD = 0.5
+STICK_THRESHOLD = 0.2
+
+# --- NEW TWEAK: Vertical speed scaling ---
+VERTICAL_MULTIPLIER = 1.8  # 1.8x slower when moving up or down
 
 # ---------------------------------------------------------------------------
 # Async Packet Helpers
@@ -66,12 +69,14 @@ async def _render(lights, snake: list, food: tuple) -> None:
     hx, hy = snake[0]
     frame_data[_chain_index(hx, hy)] = COLOR_SNAKE_HEAD
     
+    # 4. EXPLICIT LATCH: Add the magic index 254 to force the hardware render.
+    frame_data[254] = (0, 0, 0)
+    
     # Debug print to console
-    print(f"Frame Rendered -> Head: {snake[0]} | Food: {food} | Snake Length: {len(snake)} | Packets Sent: {len(frame_data) + 1}")
+    print(f"Frame Rendered -> Head: {snake[0]} | Food: {food} | Snake Length: {len(snake)} | Packets Sent: {len(frame_data)}")
 
     # Send the whole dictionary data map down the pipe in a single step
     await lights.send_frame(channel=SNAKE_CHANNEL, pixel_dict=frame_data)
-
 
 def _spawn_food(snake: list) -> tuple:
     """Pick a random cell not occupied by the snake body layer."""
@@ -93,9 +98,9 @@ def _direction_from_joystick(joystick, current_dir: tuple) -> tuple:
     elif joystick.presses["dright"]:
         dx, dy = 1, 0
     elif joystick.presses["dup"]:
-        dx, dy = 0, -1
-    elif joystick.presses["ddown"]:
         dx, dy = 0, 1
+    elif joystick.presses["ddown"]:
+        dx, dy = 0, -1
     else:
         lx = joystick["lx"]
         ly = joystick["ly"]
@@ -106,9 +111,9 @@ def _direction_from_joystick(joystick, current_dir: tuple) -> tuple:
                 dx, dy = -1, 0
         else:
             if ly > STICK_THRESHOLD:
-                dx, dy = 0, 1
-            elif ly < -STICK_THRESHOLD:
                 dx, dy = 0, -1
+            elif ly < -STICK_THRESHOLD:
+                dx, dy = 0, 1
 
     return dx, dy
 
@@ -123,6 +128,10 @@ async def run(joystick=None, lights=None) -> int:
     # Initial state initialization
     snake = [(GRID_WIDTH // 2, GRID_HEIGHT // 2)]
     direction = (1, 0)
+    
+    # NEW: Track the actual movement direction of the LAST executed step
+    last_executed_direction = (1, 0) 
+    
     food = _spawn_food(snake)
     score = 0
     alive = True
@@ -140,12 +149,20 @@ async def run(joystick=None, lights=None) -> int:
             # --- Process Movement Input ---
             if joystick is not None:
                 new_dir = _direction_from_joystick(joystick, direction)
-                if not (new_dir[0] == -direction[0] and new_dir[1] == -direction[1]):
+                
+                # FIX: Compare against last_executed_direction instead of current input direction
+                if not (new_dir[0] == -last_executed_direction[0] and new_dir[1] == -last_executed_direction[1]):
                     direction = new_dir
 
+            # --- Apply Axis-Aware Speed Scaling ---
+            current_tick_delay = tick_rate * VERTICAL_MULTIPLIER if direction[0] == 0 else tick_rate
+
             # --- Process Game Mechanics Step ---
-            if now - last_tick >= tick_rate:
+            if now - last_tick >= current_tick_delay:
                 last_tick = now
+
+                # Lock in the direction we are actively moving for this step
+                last_executed_direction = direction
 
                 head = snake[0]
                 new_head = (
@@ -161,7 +178,7 @@ async def run(joystick=None, lights=None) -> int:
 
                 if new_head == food:
                     score += 1
-                    tick_rate *= 0.95  # Gradually accelerate frame timing
+                    tick_rate *= 0.95  # Gradually accelerate base frame timing
                     print(f"Score: {score}")
                     if len(snake) == LED_COUNT:
                         print("Perfect Game! You win!")

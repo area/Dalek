@@ -2,7 +2,7 @@
 
 // Multi-string hardware configuration
 #define STRIP_COUNT 2
-const int STRIP_PINS[STRIP_COUNT]   = {6, 7};   // Channel 0 = Pin 6, Channel 1 = Pin 7
+const int STRIP_PINS[STRIP_COUNT]    = {6, 7};   // Channel 0 = Pin 6, Channel 1 = Pin 7
 const int STRIP_LENGTHS[STRIP_COUNT] = {56, 16};  // Channel 0 has 56 LEDs, Channel 1 has 16 LEDs
 
 Adafruit_NeoPixel strips[STRIP_COUNT];
@@ -21,32 +21,29 @@ void setup() {
     strips[i].show(); // Default to off
   }
   
-  // Fire initial handshake to clear the Raspberry Pi's boot barrier
-  Serial.write(0x41); // ASCII 'A'
+  // Fire initial handshake
+  Serial.write(0x41); 
 }
 
-// Low-level renderer that safely targets individual strings
+// Low-level buffer writer (Updates memory array only - does not call .show())
 void updateStripColor(int channel, byte index, byte r, byte g, byte b) {
-  if (channel >= STRIP_COUNT) return; // Drop commands targeting non-existent hardware
+  if (channel >= STRIP_COUNT) return; 
 
   if (index == 255) {
-    // Magic Index 255: Paint the entire strip immediately
+    // Magic Index 255: Clear/Tint entire memory buffer
     for (int i = 0; i < STRIP_LENGTHS[channel]; i++) {
       strips[channel].setPixelColor(i, strips[channel].Color(r, g, b));
     }
   } else if (index < STRIP_LENGTHS[channel]) {
-    // Standard Index: Target an isolated single pixel
+    // Standard Index: Update single pixel in memory
     strips[channel].setPixelColor(index, strips[channel].Color(r, g, b));
   }
-  strips[channel].show();
 }
 
 void loop() {
-  // Wait until a perfect 7-byte packet block fills the serial buffer
   if (Serial.available() >= 7) {
     if (Serial.read() == START_MARKER) {
       
-      // Extract payload parameters
       Serial.readBytes(packetBuffer, 5);
       
       if (Serial.read() == END_MARKER) {
@@ -56,18 +53,29 @@ void loop() {
         byte g       = packetBuffer[3];
         byte b       = packetBuffer[4];
         
+        // 1. Process Data
         if (channel == 255) {
-          // GLOBAL BROADCAST: Apply to every configured string
+          // GLOBAL BROADCAST
           for (int c = 0; c < STRIP_COUNT; c++) {
-            updateStripColor(c, index, r, g, b);
+            if (index == 254) {
+              strips[c].show(); // Global Latch
+            } else {
+              updateStripColor(c, index, r, g, b);
+            }
           }
         } else {
-          // DIRECT ROUTING: Target the specific string channel
-          updateStripColor(channel, index, r, g, b);
+          // DIRECT ROUTING
+          if (index == 254) {
+            // MAGIC INDEX 254: Force Hardware Render
+            strips[channel].show();
+          } else {
+            // Normal update
+            updateStripColor(channel, index, r, g, b);
+          }
         }
       }
       
-      // Handshake complete: Authorize the Pi to send the next block
+      // Acknowledge after every packet processed
       Serial.write(0x41); 
     }
   }

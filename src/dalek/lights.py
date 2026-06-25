@@ -16,7 +16,7 @@ class ArduinoLedController:
             
         print(f"Successfully matched lighting hardware on device path: {target_port}")
         
-        # 2. Connect to the auto-discovered port string
+        # Connect to the auto-discovered port string
         self.ser = serial.Serial(target_port, baudrate, timeout=1.0)
         self.lock = asyncio.Lock()
         
@@ -36,7 +36,7 @@ class ArduinoLedController:
                 current_pid = f"{port.pid:04x}".lower()
                 
                 if current_vid == vid.lower() and current_pid == pid.lower():
-                    return port.device  # Returns '/dev/ttyUSB0', '/dev/ttyUSB1', etc.
+                    return port.device  # Returns '/dev/ttyUSB0', etc.
                     
         return None
 
@@ -57,7 +57,7 @@ class ArduinoLedController:
             # Non-blocking write to hardware buffer via executor threads
             await loop.run_in_executor(None, self.ser.write, packet)
             
-            # Loop until the Arduino releases the lock by returning the exact acknowledgement byte
+            # Loop until the Arduino releases the lock by returning the acknowledgement byte
             while True:
                 response = await loop.run_in_executor(None, self.ser.read, 1)
                 if response == b'A':
@@ -66,7 +66,7 @@ class ArduinoLedController:
 
     async def send_frame(self, channel: int, pixel_dict: dict):
         """
-        Sends an entire frame state at once.
+        Sends an entire frame state at once, followed by a hardware render latch.
         pixel_dict should be a mapping of { led_index: (r, g, b) }
         """
         async with self.lock:
@@ -81,7 +81,7 @@ class ArduinoLedController:
                 if (await loop.run_in_executor(None, self.ser.read, 1)) == b'A': 
                     break
 
-            # 2. Blast all active pixels down the serial line sequentially without blocking mid-loop
+            # 2. Blast all active pixels down the serial line sequentially
             for index, (r, g, b) in pixel_dict.items():
                 packet = struct.pack(self.packet_format, self.START_MARKER, channel, index, r, g, b, self.END_MARKER)
                 await loop.run_in_executor(None, self.ser.write, packet)
@@ -90,23 +90,40 @@ class ArduinoLedController:
                 while True:
                     if (await loop.run_in_executor(None, self.ser.read, 1)) == b'A': 
                         break
-                    
+
+            # 3. CRUCIAL: Automatically append the hardware latch (254) to render the frame
+            if 254 not in pixel_dict:
+                packet = struct.pack(self.packet_format, self.START_MARKER, channel, 254, 0, 0, 0, self.END_MARKER)
+                await loop.run_in_executor(None, self.ser.write, packet)
+                while True:
+                    if (await loop.run_in_executor(None, self.ser.read, 1)) == b'A': 
+                        break
+
     async def set_pixel(self, channel: int, index: int, r: int, g: int, b: int):
-        """Address a specific LED on a specific channel strip."""
+        """Address a specific LED on a specific channel strip and render instantly."""
         await self._send_packet(channel, index, r, g, b)
+        await self._send_packet(channel, 254, 0, 0, 0) # Hardware render latch
 
     async def set_strip_color(self, channel: int, r: int, g: int, b: int):
         """Paints an entire strip channel instantly using magic index 255."""
         await self._send_packet(channel, 255, r, g, b)
+        await self._send_packet(channel, 254, 0, 0, 0) # Hardware render latch
 
     async def clear_strip(self, channel: int):
         """Turns off a targeted strip channel."""
         await self._send_packet(channel, 255, 0, 0, 0)
+        await self._send_packet(channel, 254, 0, 0, 0) # Hardware render latch
 
     async def global_broadcast_color(self, r: int, g: int, b: int):
-        """Flashes all light strings on the robot to a single uniform color color layout."""
+        """Flashes all light strings on the robot to a single uniform color layout."""
         await self._send_packet(255, 255, r, g, b)
+        # Latch both known Dalek hardware channels (0 and 1) to push the global wipe to LEDs
+        await self._send_packet(0, 254, 0, 0, 0)
+        await self._send_packet(1, 254, 0, 0, 0)
 
     async def global_blackout(self):
         """Instantly terminates all lights across all connected channels simultaneously."""
         await self._send_packet(255, 255, 0, 0, 0)
+        # Latch both known Dalek hardware channels (0 and 1)
+        await self._send_packet(0, 254, 0, 0, 0)
+        await self._send_packet(1, 254, 0, 0, 0)
