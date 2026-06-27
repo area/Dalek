@@ -199,23 +199,41 @@ async def core():
     await lights.global_blackout()
 
     pygame = await init_pygame()
-    pygame.mixer.music.load('./media/inebriate.mp3')
+    try:
+        pygame.mixer.music.load('./media/inebriate.mp3')
+    except Exception as e:
+        print(f"Error loading music: {e}")
 
+    # Load standalone sounds safely
     try:
         sound_irrigated = pygame.mixer.Sound('./media/irrigated.wav')
-        sound_irrigate = pygame.mixer.Sound('./media/irrigate.wav')
-        sound_inferior = pygame.mixer.Sound('./media/inferior.wav')
-        sound_superior = pygame.mixer.Sound('./media/superior.wav')
-        # dict to pass to snake
-        snake_sounds = {
-            "inferior": sound_inferior,
-            "superior": sound_superior
-        }
     except Exception as e:
-        print(f"Failed to load R1 sounds. (Note: Older pygame versions prefer .wav or .ogg over .mp3 for Sound objects): {e}")
+        print(f"Failed to load irrigated.wav: {e}")
         sound_irrigated = None
+
+    try:
+        sound_irrigate = pygame.mixer.Sound('./media/irrigate.wav')
+    except Exception as e:
+        print(f"Failed to load irrigate.wav: {e}")
         sound_irrigate = None
-        snake_sounds = None
+
+    # Load Snake sounds safely into the dictionary
+    snake_sounds = {}
+    
+    try:
+        snake_sounds["inferior"] = pygame.mixer.Sound('./media/inferior.wav')
+    except Exception as e:
+        print(f"Failed to load inferior.wav: {e}")
+        
+    try:
+        snake_sounds["superior"] = pygame.mixer.Sound('./media/superior.wav')
+    except Exception as e:
+        print(f"Failed to load superior.wav: {e}")
+
+    # Force a highly visible print to the console so you can't miss it
+    print("\n" + "="*40)
+    print(f"AUDIO INIT CHECK - snake_sounds dict contains: {list(snake_sounds.keys())}")
+    print("="*40 + "\n")
 
     r1_window_start_time = 0.0
     irrigated_channel = None
@@ -329,7 +347,7 @@ async def core():
                     await asyncio.sleep(0.5)
                     # Visual Feedback: Flash the entire dome green right before spawning the game loop
                     await lights.set_strip_color(channel=0, r=0, g=255, b=0)
-                    snake_task = asyncio.create_task(run_snake(joystick, lights))
+                    snake_task = asyncio.create_task(run_snake(joystick, lights, sounds=snake_sounds))
 
                 joystick.rumble(2000)  # Rumble for 2.0 secondssource dalke_venv_fdlite
 
