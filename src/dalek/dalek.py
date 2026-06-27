@@ -38,9 +38,18 @@ except Exception as e:
     webcam = None
     webcam_available = False
 
+# Set the default pin factory to native (BCM numbering, not physical pin number)
+#Device.pin_factory = NativeFactory() # seems not to work
 def mapStickToDacValue(stickValue):
+        # stickValue should be between -1 and 1
+    # That should map on to 1.11 to 3.89 volts
+    # 0 volts is 0, 4.096 is 4096
+
+    #Add 1 to stickvalue. range is now 0 to 2
     stickValue += 1
+    #Multiply by 2048. range is now 0 to 4096
     stickValue *= 2048
+    #How much through the range are we?
     stickValue = stickValue / 4096
     if (stickValue == 0.5):
         v = int((1.11 + stickValue * (3.89-1.11)) * 1000)
@@ -49,18 +58,29 @@ def mapStickToDacValue(stickValue):
         return int((1.11 + stickValue * (3.89-1.11)) * 1000)
 
 def mapStickToGP8413Value(stickValue):
+    # stickValue should be between -1 and 1
+    # That should map on to 4.75 to 6.25 volts
+    # 0  is stick central, which should equate to 5.5 volts
     base_voltage = 5.8
     stick_scaling = 1.1 # multiplier for stick value
+    # do not exceed 1.1 to avoid over-volt on joystick pcb
+    #Calc voltage to 3 DP
     GP8413_value = round(base_voltage + (stickValue * stick_scaling), 3)
+    #print("stickValue: " + str(stickValue) + " GP8413_value: " + str(GP8413_value))
     return GP8413_value
 
 PIN_EAR = 11
+## Other pins used: 
+# pin 4 provides power for 24v LEDS for snake/Joust
 
 # Set pins for controller pad
 pins = {}
 for pin in [4,5,6,7,8,9,10,11,14,15,16,19,20]:
     pins[pin] = gpiozero.LED(pin)
+    #pins[pin].on(); Only if using low level relay trigger
 
+# Set up input pins for buttons with external pull-up resistors (hence pull_up=False)
+# these are the limit switches for the head roatation and eye stalk up/down travel limits
 button17 = gpiozero.Button(17, pull_up=False)
 button18 = gpiozero.Button(18, pull_up=False)
 button22 = gpiozero.Button(22, pull_up=False)
@@ -72,13 +92,18 @@ buttonMappings = {
     "cross": 6,
     "l1": 8,
     "r1": 5,  # water pistol
-    "ddown": 14, 
+    "ddown": 14,  # skip 12 and 13 as these are pwm pins used elsewhere
     "dleft": 15,
     "dright": 16,
-}
+}   #"dup": 19,
+    #"start": 21, # second relay - toggle the wheelchair controller on and off
+    # "select": , # this is 'select' on pihut controller - to toggle joustmania
+    # "home": 20 # this is 'analog' on pihut controller - to toggle disco mode
 
 i2c = busio.I2C(board.SCL, board.SDA)
 
+
+# Set up the GP8413 DAC
 try:
     GP8413 = GP8413(i2c_addr=0x59)
 except:
@@ -92,15 +117,41 @@ except:
 while GP8413.begin():
     print("init error")
     time.sleep(1)
+#Set range to 10V
+#GP8413.set_dac_outrange(GP8413.OUTPUT_RANGE_10V)
+
+
+# Old DAC for original joystick emulation
+# mcp4728 =  adafruit_mcp4728.MCP4728(i2c)
+
+# # Set up mcp4728 and use internal voltage reference
+# mcp4728.channel_a.vref = adafruit_mcp4728.Vref.INTERNAL
+# mcp4728.channel_b.vref = adafruit_mcp4728.Vref.INTERNAL
+# mcp4728.channel_c.vref = adafruit_mcp4728.Vref.INTERNAL
+# mcp4728.channel_d.vref = adafruit_mcp4728.Vref.INTERNAL
+
+# mcp4728.channel_a.gain = 2
+# mcp4728.channel_b.gain = 2
+# mcp4728.channel_c.gain = 2
+# mcp4728.channel_d.gain = 2
+
+# mcp4728.channel_a.value = 0
+# mcp4728.channel_b.value = 0
+# mcp4728.channel_c.value = 0
+# mcp4728.channel_d.value = 0
+
+# mcp4728.save_settings()
+
+# Set PWM and Dir pins for head and eye via Cytron MOD10A Rev2
 
 head_motor = TravelLimitedMotor(
-    pwm_pin=gpiozero.PWMOutputDevice(12),
-    direction_pin=gpiozero.OutputDevice(25),
+    pwm_pin=gpiozero.PWMOutputDevice(12),   # GPIO pin for motor 1 PWM0
+    direction_pin=gpiozero.OutputDevice(25),  # GPIO pin for motor 1 direction
     velocity_scaling=(0.45, 0.35),
 )
 eye_stalk_motor = TravelLimitedMotor(
-    pwm_pin=gpiozero.PWMOutputDevice(13),
-    direction_pin=gpiozero.OutputDevice(26),
+    pwm_pin=gpiozero.PWMOutputDevice(13),  # GPIO pin for motor 2 PWM1
+    direction_pin=gpiozero.OutputDevice(26),  # GPIO pin for motor 2 direction,
     velocity_scaling=(0.65, 0.65),
 )
 
@@ -109,15 +160,19 @@ def rumble(duration_s: float, joystick):
     joystick.rumble(duration_s / 1000)
 
 async def pump_gin(pygame):
+    # Make sure they really want it.
     await asyncio.sleep(2)
     if not pygame.mixer.music.get_busy():
         pygame.mixer.music.play()
     pins[7].on()
 
 async def core():
+    # Instantiate arduino light module over its USB connection string
     lights = ArduinoLedController(vendor_id="1a86", product_id="7523")
+    # Enforce a safe, predictable blackout on boot
     await lights.global_blackout()
 
+    # Load standalone sounds safely
     pygame = await init_pygame()
     try:
         pygame.mixer.music.load('./media/inebriate.mp3')
@@ -130,6 +185,7 @@ async def core():
     try: sound_irrigate = pygame.mixer.Sound('./media/irrigate.wav')
     except Exception as e: sound_irrigate = None
 
+    # Load Snake sounds safely into the dictionary
     snake_sounds = {}
     try: snake_sounds["inferior"] = pygame.mixer.Sound('./media/inferior.wav')
     except Exception: pass
@@ -137,9 +193,9 @@ async def core():
     try: snake_sounds["superior"] = pygame.mixer.Sound('./media/superior.wav')
     except Exception: pass
 
-    print("\n" + "="*40)
+    
     print(f"AUDIO INIT CHECK - snake_sounds dict contains: {list(snake_sounds.keys())}")
-    print("="*40 + "\n")
+    
 
     r1_window_start_time = 0.0
     irrigated_channel = None
@@ -161,6 +217,7 @@ async def core():
     game_task = None
     preview_needs_render = True
 
+    #Fall back to keybaord if in debug mode. left joy=wasd, right on arrow keys
     if DEBUG_MODE:
         controller_context = MockJoystick(button_mappings=buttonMappings)
         print("--- RUNNING IN KEYBOARD DEBUG MODE ---")
@@ -303,7 +360,7 @@ async def core():
                     if buttonMappings[button] is not None:
                         pins[buttonMappings[button]].off()
 
-            if joystick.presses["home"]: 
+            if joystick.presses["home"]: # This is 'analog' on the pihut controller - to toggle disco mode
                 pins[20].toggle()
                 joystick.rumble(4.0)
 
@@ -313,10 +370,19 @@ async def core():
                     print("Face tracking status: " + str(webcam.face_tracking))
 
             # Wheelchair Drive Motors
+            # Get the x, y values of the left stick
             lx_axis = joystick['lx']
             ly_axis = joystick['ly']
-            GP8413.set_dac_out_voltage(mapStickToGP8413Value(-lx_axis), channel=0)
-            GP8413.set_dac_out_voltage(mapStickToGP8413Value(ly_axis), channel=1) 
+            #print(" lx: " + str(lx_axis) + "  ly: " + str(ly_axis))
+            GP8413.set_dac_out_voltage(mapStickToGP8413Value(-lx_axis), channel=0) #l/r -ve because chair physically reversed
+            GP8413.set_dac_out_voltage(mapStickToGP8413Value(ly_axis), channel=1) #f/r
+
+            # Original DAC for original joystick emulation
+            #mcp4728.channel_b.raw_value = mapStickToDacValue(-lx_axis) # -ve because chair reversed
+            #mcp4728.channel_a.raw_value = mapStickToDacValue(ly_axis)
+
+            # Right stick controls head left right, eye up down, but currently only in a binary sense
+            # Disable stick/motor processing while snake is running
 
             rx_axis = joystick['rx']
             ry_axis = joystick['ry']
@@ -333,6 +399,7 @@ async def core():
             if webcam and webcam.face_tracking:
                 try:
                     x, y = webcam.get_direction()
+                    # Clamp face-tracking drive values to the allowed motor range.
                     ry_axis = max(-1.0, min(1.0, -y * 1.5))
                     rx_axis = max(-1.0, min(1.0, x * 1.7))
 
@@ -346,15 +413,52 @@ async def core():
                         print(f"Error during face tracking: {e}")
 
             # Head/Eye Motors
+            # Check button states before setting motor speed on head LR axis
+            # switches are normally open so circuit is closed when pressed. Not ideal
+            # as no failsafe in case of circuit failure, but limited by hardware options
+            # for toggle switches
+
             head_motor.set_travel_limit(not button17.is_pressed, not button18.is_pressed)
+            # Control motor speed and direction based on joystick input
+            #print(f"Head request: {-rx_axis} (dir pin before={head_motor._direction_pin.value}, pwm before={head_motor._pwm_pin.value})")
             head_motor.set_velocity(-rx_axis)
+            #print(f"Head actual: {head_motor.velocity} (dir pin after={head_motor._direction_pin.value}, pwm after={head_motor._pwm_pin.value})")
             if rx_axis and not head_motor.velocity:
+                # Velocity not set due to travel limit reached.
                 rumble(0.5, joystick)
 
+            # Check button states before setting motor speed on eye up/down axis
+            # These are the opposite of the head rotation as switches wired normally closed
+            # as failsafe in case of circuit failure
             eye_stalk_motor.set_travel_limit(button23.is_pressed, button22.is_pressed)
+            # Control motor speed and direction based on joystick input
             eye_stalk_motor.set_velocity(-ry_axis)
             if ry_axis and not eye_stalk_motor.velocity:
+                # Velocity not set due to travel limit reached.
                 rumble(0.5, joystick)
+
+            # Legacy as initially used for head controls before Cytron MOD10A Rev2
+            # implemented for speed and direction
+            # This pin should control two relays for each axis, and will control direction
+            # mcp4728.channel_d.raw_value = max(mapStickToDacValue(x_axis)-2000, 0)
+            # mcp4728.channel_c.raw_value = max(mapStickToDacValue(y_axis)-2000, 0)
+
+            # These pins control power.
+            # The limit is here such that the direction indication above is on, if it's coming on,
+            # Before power is supplied.
+            # if (abs(joystick['rx']) > 0.8):
+            #     pins[19].on() # off()  if using low level trigger
+            # else:
+            #     pins[19].off() # on()
+
+            # if (abs(joystick['ry']) > 0.8):
+            #     pins[20].on() # off()
+            # else:
+            #     pins[20].off() # on()
+
+            # The joystick "presses since last check" loops too quickly
+            # to catch both button presses at the same time, so we track
+            # the joint state ourselves.
 
             # Gin Pump Logic
             if joystick.presses["l2"]: gin_joystick_button_states[0] = True
