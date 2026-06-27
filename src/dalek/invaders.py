@@ -37,7 +37,7 @@ async def run(joystick, lights, sounds):
     last_move, last_fire = 0, 0
     last_b_tick, last_i_tick, last_spawn = loop.time(), loop.time(), loop.time()
     
-    i_speed = 0.6
+    i_speed = 0.2
     s_rate = 2.5
 
     try:
@@ -91,7 +91,7 @@ async def run(joystick, lights, sounds):
                             if b not in b_rem: b_rem.append(b)
                             if inv not in i_rem: i_rem.append(inv)
                             score += 1
-                            i_speed = max(0.1, i_speed * 0.98)
+                            i_speed = max(0.05, i_speed * 0.98)
                             s_rate = max(0.5, s_rate * 0.98)
 
             bullets = [b for b in bullets if b not in b_rem]

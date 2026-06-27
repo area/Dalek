@@ -246,7 +246,7 @@ async def core():
                     preview_needs_render = True # Force menu redraw
                 else:
                     # Allow user to instantly abort the game using Select
-                    if joystick.presses.get("select"):
+                    if joystick.presses["select"]:
                         print("Aborting game and switching modes...")
                         game_task.cancel()
                         game_task = None
@@ -277,7 +277,7 @@ async def core():
                 await proc.wait()
                 
                 await lights.global_blackout()
-                pins[4].off()
+                
                 
                 if current_mode == MODE_ARCADE:
                     print("Starting ARCADE mode")
@@ -292,6 +292,7 @@ async def core():
                     await proc.wait()
                     joystick.rumble(2.0)
                 elif current_mode == MODE_DALEK:
+                    pins[4].off()
                     print("Returning to DALEK mode")
                     joystick.rumble(0.5)
 
