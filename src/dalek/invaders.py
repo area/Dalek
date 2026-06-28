@@ -26,7 +26,7 @@ def get_preview():
     frame[254] = (0, 0, 0)
     return frame
 
-async def run(joystick, lights, sounds):
+async def run(joystick, lights, sounds, input_queue):
     player_y = GRID_HEIGHT // 2
     invaders = []  
     bullets = []   
@@ -43,23 +43,30 @@ async def run(joystick, lights, sounds):
     try:
         while alive:
             now = loop.time()
+            dy = 0
+            
+            # 1. Drain the queue for discrete events
+            while not input_queue.empty():
+                cmd = input_queue.get_nowait()
+                if cmd == "cross" and (now - last_fire > 0.1):
+                    bullets.append({"x": 1, "y": player_y, "old_x": 1})
+                    last_fire = now
+                elif cmd == "dup": dy = -1
+                elif cmd == "ddown": dy = 1
 
-            if joystick:
-                # Vertical movement logic
-                dy = 0
-                if joystick.presses["dup"]: dy = -1
-                elif joystick.presses["ddown"]: dy = 1
-                else:
-                    ly = joystick["ly"]
-                    if ly > 0.2: dy = -1
-                    elif ly < -0.2: dy = 1
+            # 2. Fallback to analog stick for movement
+            if dy == 0 and joystick:
+                ly = joystick["ly"]
+                if ly > 0.2: dy = -1
+                elif ly < -0.2: dy = 1
 
-                if dy != 0 and (now - last_move > 0.12):
-                    player_y = max(0, min(GRID_HEIGHT - 1, player_y + dy))
-                    last_move = now
+            # 3. Apply vertical movement
+            if dy != 0 and (now - last_move > 0.12):
+                player_y = max(0, min(GRID_HEIGHT - 1, player_y + dy))
+                last_move = now
 
-                # Firing logic (Triangle mapped to fire)
-                if joystick.presses["triangle"] and (now - last_fire > 0.25):
+                # Firing logic (Cross mapped to fire)
+                if joystick.presses["cross"] and (now - last_fire > 0.1):
                     bullets.append({"x": 1, "y": player_y, "old_x": 1})
                     last_fire = now
 

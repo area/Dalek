@@ -20,6 +20,7 @@ from dalek.webcam_fdlite import Webcam
 # Game imports
 from dalek import snake
 from dalek import invaders
+from dalek import runner
 
 ## usage: PYTHONPATH=src ./dalek_venv_fdlite/bin/python -u -m dalek.dalek
 
@@ -212,7 +213,7 @@ async def core():
     current_mode = MODE_DALEK
     
     # Arcade Menu Variables
-    games = [snake, invaders]
+    games = [snake, invaders, runner]
     selected_game_idx = 0
     game_task = None
     preview_needs_render = True
@@ -253,7 +254,13 @@ async def core():
                         # DO NOT continue here! Allow execution to fall through 
                         # to the Global Mode Selector below to instantly switch to Joust.
                     else:
-                        # Let the game consume joystick inputs and run its loop
+                        # feed in the queue to let the game consume joystick inputs and run its loop
+                        # Only track keys relevant to the games to save processing
+                        for key in ["dleft", "dright", "dup", "ddown", "cross"]:
+                            if key in joystick.presses and joystick.presses[key]:
+                                # Limit buffer to 3 moves to prevent runaway snake lag
+                                if game_queue.qsize() < 3: 
+                                    game_queue.put_nowait(key)
                         await asyncio.sleep(0.01)
                         continue
 
@@ -318,8 +325,10 @@ async def core():
                 if joystick.presses["start"]:  
                     print(f"Launching Game: {games[selected_game_idx].__name__}")
                     await lights.set_strip_color(channel=0, r=0, g=255, b=0) # Flash green start
+                    #Create a fresh queue for this specific game session
+                    game_queue = asyncio.Queue()
                     game_task = asyncio.create_task(
-                        games[selected_game_idx].run(joystick, lights, snake_sounds)
+                        games[selected_game_idx].run(joystick, lights, snake_sounds, game_queue)
                     )
                 
                 await asyncio.sleep(0.01)
