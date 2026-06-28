@@ -76,7 +76,7 @@ PIN_EAR = 11
 
 # Set pins for controller pad
 pins = {}
-for pin in [4,5,6,7,8,9,10,11,14,15,16,19,20]:
+for pin in [4,5,6,7,8,9,10,11,14,15,16,19,20, 21]:
     pins[pin] = gpiozero.LED(pin)
     #pins[pin].on(); Only if using low level relay trigger
 
@@ -373,6 +373,12 @@ async def core():
             if joystick.presses["home"]: # This is 'analog' on the pihut controller - to toggle disco mode
                 pins[20].toggle()
                 joystick.rumble(4.0)
+
+            # Handle "Start" button for momentary control of pin 21 - turn wheelchair hardware on and off
+            if joystick.presses["start"]: # controls the second relay - toggle the wheelchair controller on and off
+                pins[21].on()  # Turn on only while the button is pressed
+            elif joystick.releases["start"]:
+                pins[21].off()
 
             if webcam_available and webcam:
                 if joystick.presses["rs"]:
