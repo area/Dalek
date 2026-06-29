@@ -65,11 +65,7 @@ async def run(joystick, lights, sounds, input_queue):
                 player_y = max(0, min(GRID_HEIGHT - 1, player_y + dy))
                 last_move = now
 
-                # Firing logic (Cross mapped to fire)
-                if joystick.presses["cross"] and (now - last_fire > 0.1):
-                    bullets.append({"x": 1, "y": player_y, "old_x": 1})
-                    last_fire = now
-
+            # --- Game Logic Updates ---
             if now - last_b_tick >= 0.04:
                 last_b_tick = now
                 for b in bullets:
@@ -109,6 +105,7 @@ async def run(joystick, lights, sounds, input_queue):
             for inv in invaders:
                 if inv["x"] == 0: alive = False
 
+            # --- Hardware Render ---
             if lights:
                 frame = {get_chain_index(0, player_y): COLOR_PLAYER}
                 for i in invaders: frame[get_chain_index(i["x"], i["y"])] = COLOR_INVADER
@@ -116,7 +113,8 @@ async def run(joystick, lights, sounds, input_queue):
                 frame[254] = (0, 0, 0)
                 await lights.send_frame(channel=SNAKE_CHANNEL, pixel_dict=frame)
 
-            await asyncio.sleep(0.01)
+            # CRITICAL: Sleep long enough to let the Arduino breathe (~33 FPS)
+            await asyncio.sleep(0.03) 
     finally:
         await run_endgame_sequence(score, "invaders", lights, sounds)
     return score
