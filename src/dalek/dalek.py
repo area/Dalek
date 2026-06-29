@@ -247,7 +247,7 @@ async def core():
                     preview_needs_render = True # Force menu redraw
                 else:
                     # Allow user to instantly abort the game using Select
-                    if joystick.presses.get("select"): #["select"]:
+                    if joystick.presses["select"]:
                         print("Aborting game and switching modes...")
                         game_task.cancel()
                         game_task = None
